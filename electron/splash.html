@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lumen</title>
+    <style>
+      :root {
+        --bg: #0f1523;
+        --fg: #e8eef7;
+        --muted: #93a1b8;
+        --accent: #6366f1;
+        --danger: #f87171;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        cursor: default;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 30px 32px;
+        /* Lets the frameless splash be dragged. */
+        -webkit-app-region: drag;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
+      .brand svg { color: var(--accent); }
+      .brand h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+      .stage { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
+      .hint { font-size: 11.5px; color: var(--muted); min-height: 32px; }
+      .bar { height: 3px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; margin-bottom: 14px; }
+      .bar > i {
+        display: block; height: 100%; width: 30%; border-radius: 3px;
+        background: var(--accent);
+        animation: slide 1.4s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(333%); }
+      }
+      .error {
+        display: none; margin-top: 14px; padding: 10px 12px;
+        border: 1px solid rgba(248,113,113,0.35);
+        background: rgba(248,113,113,0.10);
+        border-radius: 8px; color: var(--danger);
+        font-size: 11.5px; white-space: pre-wrap;
+        max-height: 150px; overflow: auto;
+        -webkit-app-region: no-drag; user-select: text;
+      }
+      body.failed .bar { display: none; }
+      body.failed .error { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6" opacity="0.5" />
+        <circle cx="12" cy="12" r="4" fill="currentColor" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <h1>Lumen</h1>
+    </div>
+
+    <div class="bar"><i></i></div>
+    <div class="stage" id="stage">Starting…</div>
+    <div class="hint" id="hint"></div>
+    <pre class="error" id="error"></pre>
+
+    <script>
+      const stage = document.getElementById('stage')
+      const hint = document.getElementById('hint')
+      const error = document.getElementById('error')
+
+      window.splash.onStage((payload) => {
+        stage.textContent = payload.stage
+        hint.textContent = payload.hint || ''
+      })
+
+      window.splash.onError((payload) => {
+        document.body.classList.add('failed')
+        stage.textContent = 'Could not start'
+        hint.textContent = 'The log file has the full detail.'
+        error.textContent = payload.message
+      })
+    </script>
+  </body>
+</html>

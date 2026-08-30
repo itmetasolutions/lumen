@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+.data/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.DS_Store
+dist-electron/
+release/

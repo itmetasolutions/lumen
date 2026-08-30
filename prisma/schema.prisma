@@ -1,0 +1,982 @@
+// Lumen — Universal Business Lead Intelligence & Website Audit Platform
+// Design rules encoded here:
+//  * History is append-only: Audit rows are never mutated after completion.
+//  * Business.* score columns are DENORMALISED projections of the latest completed
+//    audit, existing purely so the master table can filter/sort/paginate server-side.
+//    They are always rebuilt by scoring/apply.ts — never authored by hand.
+//  * JSONB holds raw provider payloads, evidence and weights only. Anything the user
+//    can filter on is a real, indexed column.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Runtime connection. On a pooled provider (Neon/pgbouncer) this is the
+  // pooled endpoint — right for many short-lived app queries.
+  url      = env("DATABASE_URL")
+  // Migrations need a direct connection: connection poolers do not support the
+  // session-level state DDL relies on. Falls back to DATABASE_URL when unset.
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & tenancy
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  lastLoginAt  DateTime?
+
+  memberships  Membership[]
+  auditLogs    AuditLog[]
+  assignedLeads OutreachStatus[] @relation("AssignedUser")
+  exportJobs   ExportJob[]
+  discoveryJobs DiscoveryJob[]
+  savedViews   SavedView[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Data-retention policy (§30): null = keep forever.
+  retentionDays Int?
+
+  memberships     Membership[]
+  businesses      Business[]
+  discoveryJobs   DiscoveryJob[]
+  savedViews      SavedView[]
+  exportJobs      ExportJob[]
+  credentials     ApiCredential[]
+  scoringProfiles ScoringProfile[]
+  auditLogs       AuditLog[]
+  usageRecords    UsageRecord[]
+  settings        WorkspaceSettings?
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(OWNER)
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model WorkspaceSettings {
+  id          String    @id @default(cuid())
+  workspaceId String    @unique
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Cost control (§33)
+  maxBusinessesPerDiscovery Int @default(500)
+  maxPagesPerSite           Int @default(8)
+  maxConcurrentAudits       Int @default(4)
+  dailyPerformanceTests     Int @default(1000)
+  dailyAiAnalyses           Int @default(100)
+  // Do not re-run an expensive check when a recent one exists (§33)
+  performanceCacheHours     Int @default(72)
+  aiCacheHours              Int @default(336)
+
+  // Audit rules (§34) — thresholds surfaced in Settings → Audit Rules
+  auditRules Json @default("{}")
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Server-side only. `secret` is never selected into a client component.
+model ApiCredential {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  provider    String    // 'google-places' | 'pagespeed' | 'search' | 'openai' | 's3'
+  label       String?
+  secret      String?   // encrypted at rest; falls back to env when null
+  config      Json      @default("{}")
+  enabled     Boolean   @default(true)
+  lastCheckedAt DateTime?
+  lastStatus  String?   // CONNECTED | NOT_CONFIGURED | ERROR
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, provider])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scoring configuration (§14 — weights configurable, not hard-coded)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ScoringProfile {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String    @default("Default")
+  isDefault   Boolean   @default(true)
+  weights     Json      // ScoringWeights — see src/server/scoring/weights.ts
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, name])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Discovery
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum JobState {
+  PENDING
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum AuditDepth {
+  QUICK
+  STANDARD
+  DEEP
+}
+
+model DiscoveryJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  name        String
+  state       JobState  @default(PENDING)
+  depth       AuditDepth @default(STANDARD)
+
+  // Location input (§1)
+  country      String?
+  countryCode  String?
+  region       String?
+  city         String?
+  area         String?
+  postalCode   String?
+  radiusMeters Int?
+  centerLat    Float?
+  centerLng    Float?
+  bboxMinLat   Float?
+  bboxMinLng   Float?
+  bboxMaxLat   Float?
+  bboxMaxLng   Float?
+
+  // Industry input (§1)
+  industry    String
+  categories  String[] @default([])
+  keywords    String[] @default([])
+  exclusions  String[] @default([])
+  expandTerms Boolean  @default(true)
+
+  providers   String[] @default([])
+
+  // Coverage report (§2) — measured, never estimated for display
+  sourcesSearched   String[] @default([])
+  queriesExecuted   Int      @default(0)
+  cellsSearched     Int      @default(0)
+  cellsPlanned      Int      @default(0)
+  candidatesFound   Int      @default(0)
+  uniqueBusinesses  Int      @default(0)
+  duplicatesMerged  Int      @default(0)
+  newBusinesses     Int      @default(0)
+  errorCount        Int      @default(0)
+
+  progressStage   String?
+  progressPercent Int      @default(0)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  error       String?
+
+  queries     SearchQuery[]
+  events      JobEvent[]
+  sources     BusinessSource[]
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, state])
+}
+
+/// One row per (provider x geo cell x search term) actually executed.
+/// `isExpanded` preserves the distinction between the user's term and our expansions (§2).
+model SearchQuery {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       DiscoveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  provider   String
+  term       String
+  isExpanded Boolean @default(false)
+  originTerm String?
+
+  cellIndex  Int?
+  cellLat    Float?
+  cellLng    Float?
+  cellRadius Int?
+
+  status     String   @default("PENDING") // PENDING RUNNING OK FAILED SKIPPED
+  resultCount Int     @default(0)
+  error      String?
+  durationMs Int?
+  executedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([jobId, status])
+}
+
+model JobEvent {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       DiscoveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage     String
+  level     String   @default("info") // info | warn | error
+  message   String
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([jobId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Business entity
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum WebsiteStatus {
+  UNKNOWN        // not yet checked
+  NONE           // no website found by any source
+  REACHABLE
+  UNREACHABLE
+  PARKED         // resolves but is a placeholder / for-sale / registrar page
+  SOCIAL_ONLY    // only a Facebook/Instagram page was found
+  ERROR
+}
+
+enum AuditStatus {
+  NOT_AUDITED
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
+model Business {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // ── Identity
+  name           String
+  normalizedName String                        // for blocking/dedupe
+  legalName      String?
+  industry       String?
+  category       String?
+  categories     String[] @default([])
+
+  // ── Location
+  addressLine   String?
+  city          String?
+  region        String?
+  postalCode    String?
+  country       String?
+  countryCode   String?
+  area          String?
+  latitude      Float?
+  longitude     Float?
+  geohash       String?                        // coarse blocking key for dedupe
+
+  // ── Primary contact projections (authoritative detail lives in BusinessContact)
+  primaryPhone           String?
+  primaryPhoneNormalized String?
+  primaryEmail           String?
+  websiteUrl             String?
+  websiteDomain          String?
+
+  // ── Marketplace signals
+  rating       Float?
+  reviewCount  Int?
+  openingStatus String?                        // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | null
+
+  // ── Status
+  websiteStatus WebsiteStatus @default(UNKNOWN)
+  auditStatus   AuditStatus   @default(NOT_AUDITED)
+  isDemo        Boolean       @default(false)  // true when every source is a mock provider
+
+  // ── Denormalised scores (rebuilt from the latest completed audit)
+  dataConfidence     Int?
+  websiteHealth      Int?
+  seoHealth          Int?
+  perfHealthMobile   Int?
+  perfHealthDesktop  Int?
+  uxHealth           Int?
+  technicalHealth    Int?
+
+  websiteCreationOpp Int?
+  redesignOpp        Int?
+  seoOpp             Int?
+  speedOpp           Int?
+  leadScore          Int?
+  leadTier           String?                   // HOT | WARM | LOW
+
+  needsWebsite  Boolean @default(false)
+  needsRedesign Boolean @default(false)
+  needsSeo      Boolean @default(false)
+  needsSpeed    Boolean @default(false)
+
+  // ── Denormalised metric projections used by the Speed/SEO filters
+  lcpMobileMs     Int?
+  clsMobile       Float?
+  inpMobileMs     Int?
+  perfScoreMobile Int?
+  perfScoreDesktop Int?
+  pageWeightBytes Int?
+  seoIssueCount   Int @default(0)
+  uxIssueCount    Int @default(0)
+  technicalIssueCount Int @default(0)
+  brokenLinkCount Int @default(0)
+
+  // Specific audit signals promoted to columns so the advanced filters in §8
+  // ("Missing title", "No sitemap", "Broken layout"…) can be answered by an
+  // indexed query instead of joining the latest audit for every row.
+  seoMissingTitle       Boolean @default(false)
+  seoMissingDescription Boolean @default(false)
+  seoMissingH1          Boolean @default(false)
+  seoNoSitemap          Boolean @default(false)
+  seoNoSchema           Boolean @default(false)
+  seoNotIndexable       Boolean @default(false)
+  uxNoViewport          Boolean @default(false)
+  uxHorizontalOverflow  Boolean @default(false)
+  uxBrokenImages        Int     @default(0)
+  uxAccessibilityIssues Int     @default(0)
+  uxNavigationIssues    Int     @default(0)
+  techNoHttps           Boolean @default(false)
+  techMixedContent      Boolean @default(false)
+
+  hasPhone   Boolean @default(false)
+  hasEmail   Boolean @default(false)
+  hasWebsite Boolean @default(false)
+  hasSocial  Boolean @default(false)
+
+  tags String[] @default([])
+
+  // ── Dates (§7 — each kept distinct, none overwritten by another)
+  createdAt        DateTime  @default(now())
+  discoveredAt     DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  lastCrawledAt    DateTime?
+  /// When contact enrichment last *attempted* this business, whether or not it
+  /// found anything. Distinct from lastCrawledAt (which an audit also sets), and
+  /// required so a bulk enrichment run converges instead of retrying sites that
+  /// simply publish no contact details.
+  contactsEnrichedAt DateTime?
+  lastAuditedAt    DateTime?
+  lastSeoAuditAt   DateTime?
+  lastPerfAuditAt  DateTime?
+  lastUxAuditAt    DateTime?
+  updatedAt        DateTime  @updatedAt
+
+  sources       BusinessSource[]
+  contacts      BusinessContact[]
+  website       Website?
+  audits        Audit[]
+  opportunities Opportunity[]
+  outreach      OutreachStatus?
+
+  @@index([workspaceId, leadScore(sort: Desc)])
+  @@index([workspaceId, needsWebsite])
+  @@index([workspaceId, needsRedesign])
+  @@index([workspaceId, needsSeo])
+  @@index([workspaceId, needsSpeed])
+  @@index([workspaceId, discoveredAt])
+  @@index([workspaceId, lastAuditedAt])
+  @@index([workspaceId, city])
+  @@index([workspaceId, industry])
+  @@index([workspaceId, websiteDomain])
+  @@index([workspaceId, primaryPhoneNormalized])
+  @@index([workspaceId, normalizedName])
+  @@index([workspaceId, geohash])
+  @@index([workspaceId, auditStatus])
+  @@index([workspaceId, leadTier])
+  @@index([workspaceId, seoHealth])
+  @@index([workspaceId, perfScoreMobile])
+  @@index([workspaceId, uxHealth])
+  @@index([workspaceId, hasWebsite])
+  @@index([workspaceId, hasEmail])
+  @@index([workspaceId, hasPhone])
+}
+
+/// Provenance (§19). Never deleted on merge — a merged business keeps every source.
+model BusinessSource {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  provider     String   // 'google-places' | 'openstreetmap' | 'search' | 'serpapi-yelp' | 'serpapi-yandex' | 'csv-import' | 'mock'
+  providerId   String?  // provider's own record id, where terms permit storing it
+  sourceUrl    String?
+  confidence   Int      @default(70)  // 0-100 — source trust for conflict resolution
+  isDemo       Boolean  @default(false)
+  raw          Json?                  // untouched provider payload
+  retrievedAt  DateTime @default(now())
+  jobId        String?
+  job          DiscoveryJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, provider, providerId])
+  @@index([provider, providerId])
+  @@index([businessId])
+}
+
+enum ContactKind {
+  PHONE
+  EMAIL
+  SOCIAL
+}
+
+model BusinessContact {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  kind       ContactKind
+  value      String
+  normalized String
+  label      String?              // 'facebook' | 'instagram' | 'mobile' | 'reception' ...
+  isPrimary  Boolean  @default(false)
+  provider   String               // which source supplied it (§19)
+  sourceUrl  String?
+  confidence Int      @default(70)
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, kind, normalized])
+  @@index([businessId, kind])
+}
+
+model Website {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  inputUrl      String
+  canonicalUrl  String?
+  domain        String
+  isHttps       Boolean  @default(false)
+  finalStatus   Int?
+  redirectChain String[] @default([])
+  ipAddresses   String[] @default([])
+  technologies  String[] @default([])   // only when reliably detectable
+  cms           String?
+  status        WebsiteStatus @default(UNKNOWN)
+  lastCheckedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  audits Audit[]
+
+  @@index([domain])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audits (append-only history — §7, §26)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum StageStatus {
+  PENDING
+  RUNNING
+  OK
+  FAILED
+  SKIPPED
+}
+
+model Audit {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  websiteId  String?
+  website    Website? @relation(fields: [websiteId], references: [id], onDelete: SetNull)
+
+  depth   AuditDepth  @default(STANDARD)
+  status  AuditStatus @default(RUNNING)
+  isDemo  Boolean     @default(false)
+  trigger String      @default("discovery") // discovery | manual | recheck | scheduled
+
+  crawlStatus       StageStatus @default(PENDING)
+  technicalStatus   StageStatus @default(PENDING)
+  seoStatus         StageStatus @default(PENDING)
+  performanceStatus StageStatus @default(PENDING)
+  uxStatus          StageStatus @default(PENDING)
+
+  crawlError       String?
+  technicalError   String?
+  seoError         String?
+  performanceError String?
+  uxError          String?
+
+  // Score snapshot at the time of this audit — enables historical comparison (§26)
+  websiteHealth     Int?
+  seoHealth         Int?
+  uxHealth          Int?
+  technicalHealth   Int?
+  perfHealthMobile  Int?
+  perfHealthDesktop Int?
+  leadScore         Int?
+
+  pagesCrawled Int      @default(0)
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  durationMs   Int?
+
+  issues       AuditIssue[]
+  pages        CrawledPage[]
+  seoResult    SeoResult?
+  uxResult     UxResult?
+  technical    TechnicalResult?
+  performance  PerformanceResult[]
+
+  @@index([businessId, startedAt(sort: Desc)])
+  @@index([status])
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum IssueCategory {
+  SEO
+  PERFORMANCE
+  UX
+  ACCESSIBILITY
+  TECHNICAL
+  CONTENT
+  SECURITY
+}
+
+/// §11 — the evidence model. Every finding shown in the UI is one of these rows.
+model AuditIssue {
+  id      String @id @default(cuid())
+  auditId String
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  type              String        // stable rule id, e.g. 'seo.meta_description.missing'
+  category          IssueCategory
+  severity          Severity
+  confidence        Confidence    @default(HIGH)
+  title             String
+  description       String
+  /// Machine-collected proof: selector, measured value, snippet, counts, viewport.
+  evidence          Json
+  affectedUrl       String?
+  source            String        @default("DETERMINISTIC") // DETERMINISTIC | AI_ASSISTED | PROVIDER
+  recommendedAction String
+  detectedAt        DateTime      @default(now())
+
+  @@index([auditId, category])
+  @@index([auditId, severity])
+  @@index([type])
+}
+
+model CrawledPage {
+  id      String @id @default(cuid())
+  auditId String
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  url           String
+  normalizedUrl String
+  role          String   @default("other")  // home | contact | about | services | other
+  statusCode    Int?
+  redirectChain String[] @default([])
+  contentType   String?
+  bytes         Int?
+  loadMs        Int?
+  title         String?
+  error         String?
+  fetchedAt     DateTime @default(now())
+
+  @@index([auditId])
+}
+
+model SeoResult {
+  id      String @id @default(cuid())
+  auditId String @unique
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  health      Int
+  opportunity Int
+
+  title            String?
+  titleLength      Int?
+  metaDescription  String?
+  metaDescLength   Int?
+  h1Count          Int?
+  h1Text           String?
+  canonicalUrl     String?
+  robotsTxtFound   Boolean @default(false)
+  robotsTxtUrl     String?
+  sitemapFound     Boolean @default(false)
+  sitemapUrl       String?
+  isIndexable      Boolean @default(true)
+  noindexReason    String?
+  hasOpenGraph     Boolean @default(false)
+  hasStructuredData Boolean @default(false)
+  schemaTypes      String[] @default([])
+  hasLocalBusinessSchema Boolean @default(false)
+  imagesTotal      Int     @default(0)
+  imagesMissingAlt Int     @default(0)
+  internalLinks    Int     @default(0)
+  brokenInternalLinks Int  @default(0)
+  wordCount        Int?
+  duplicateTitles      Int @default(0)
+  duplicateDescriptions Int @default(0)
+  issueCount       Int     @default(0)
+  createdAt        DateTime @default(now())
+}
+
+enum PerfStrategy {
+  MOBILE
+  DESKTOP
+}
+
+model PerformanceResult {
+  id      String @id @default(cuid())
+  auditId String
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  strategy PerfStrategy
+  provider String        // 'pagespeed' | 'lighthouse' | 'mock'
+  isDemo   Boolean @default(false)
+
+  score       Int?        // 0-100 lab performance score
+  lcpMs       Int?
+  fcpMs       Int?
+  cls         Float?
+  inpMs       Int?
+  tbtMs       Int?
+  ttfbMs      Int?
+  speedIndexMs Int?
+
+  // Field data (CrUX) kept separate from lab data — they are different things
+  fieldLcpMs  Int?
+  fieldCls    Float?
+  fieldInpMs  Int?
+  fieldSource String?
+
+  pageWeightBytes Int?
+  requestCount    Int?
+  imageBytes      Int?
+  scriptBytes     Int?
+  unusedJsBytes   Int?
+  unusedCssBytes  Int?
+  renderBlockingCount Int?
+  opportunities   Json?    // provider opportunity list, kept raw for evidence
+  measuredAt      DateTime @default(now())
+
+  @@unique([auditId, strategy])
+}
+
+model UxResult {
+  id      String @id @default(cuid())
+  auditId String @unique
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  health      Int
+  opportunity Int
+
+  hasViewportMeta      Boolean @default(true)
+  horizontalOverflowPx Int?     // measured overflow at mobile width
+  overlappingElements  Int      @default(0)
+  brokenImages         Int      @default(0)
+  totalImages          Int      @default(0)
+  tinyTapTargets       Int      @default(0)
+  lowContrastNodes     Int      @default(0)
+  consoleErrors        Int      @default(0)
+  missingAltCount      Int      @default(0)
+  fontSizeTooSmall     Int      @default(0)
+  navIssues            Int      @default(0)
+  aiAssisted           Boolean  @default(false)
+  aiSummary            String?
+  aiConfidence         String?
+  createdAt            DateTime @default(now())
+
+  screenshots Screenshot[]
+}
+
+model Screenshot {
+  id         String   @id @default(cuid())
+  uxResultId String
+  uxResult   UxResult @relation(fields: [uxResultId], references: [id], onDelete: Cascade)
+
+  viewport  String   // 'desktop-1440x900' | 'mobile-390x844'
+  width     Int
+  height    Int
+  path      String   // storage key; served through an authorised handler
+  bytes     Int?
+  createdAt DateTime @default(now())
+}
+
+model TechnicalResult {
+  id      String @id @default(cuid())
+  auditId String @unique
+  audit   Audit  @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  health      Int
+  opportunity Int
+
+  finalStatusCode  Int?
+  redirectCount    Int     @default(0)
+  redirectChain    String[] @default([])
+  isHttps          Boolean @default(false)
+  httpsRedirects   Boolean @default(false)
+  sslValid         Boolean?
+  sslExpiresAt     DateTime?
+  mixedContentCount Int    @default(0)
+  brokenLinks      Int     @default(0)
+  checkedLinks     Int     @default(0)
+  missingAssets    Int     @default(0)
+  consoleErrors    Int     @default(0)
+  serverHeader     String?
+  poweredBy        String?
+  createdAt        DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Opportunities (§5 — overlapping, never mutually exclusive)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum OpportunityKind {
+  WEBSITE_CREATION
+  REDESIGN
+  SEO
+  SPEED
+}
+
+model Opportunity {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  kind       OpportunityKind
+  triggered  Boolean  @default(false)
+  score      Int      @default(0)
+  /// [{ label, detail, weight, evidenceIssueIds[] }] — answers "why was this triggered?"
+  reasons    Json     @default("[]")
+  confidence Confidence @default(HIGH)
+  computedAt DateTime @default(now())
+
+  @@unique([businessId, kind])
+  @@index([businessId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Outreach (§27 — status tracking only; the app never sends anything)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ContactStage {
+  NOT_CONTACTED
+  CONTACTED
+  FOLLOW_UP
+  INTERESTED
+  QUALIFIED
+  PROPOSAL_SENT
+  WON
+  LOST
+  NOT_INTERESTED
+  DO_NOT_CONTACT
+}
+
+model OutreachStatus {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  stage          ContactStage @default(NOT_CONTACTED)
+  assignedUserId String?
+  assignedUser   User?    @relation("AssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  lastContactAt  DateTime?
+  nextFollowUpAt DateTime?
+  updatedAt      DateTime @updatedAt
+
+  notes OutreachNote[]
+
+  @@index([stage])
+}
+
+model OutreachNote {
+  id        String   @id @default(cuid())
+  statusId  String
+  status    OutreachStatus @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  body      String
+  authorId  String?
+  createdAt DateTime @default(now())
+
+  @@index([statusId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Saved views & exports
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SavedView {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  name      String
+  tab       String   // all | website-creation | redesign | seo | speed | hot
+  filters   Json     // FilterGroup DSL
+  sort      Json?
+  columns   String[] @default([])
+  dateRange Json?
+  isShared  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, tab])
+}
+
+enum ExportFormat {
+  CSV
+  XLSX
+}
+
+enum ExportScope {
+  ALL
+  FILTER
+  SELECTED
+}
+
+model ExportJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  format   ExportFormat
+  scope    ExportScope
+  tab      String
+  filters  Json?
+  ids      String[] @default([])
+  columns  String[] @default([])
+
+  state     JobState @default(PENDING)
+  rowCount  Int      @default(0)
+  fileName  String?
+  filePath  String?
+  bytes     Int?
+  error     String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([workspaceId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Operations: queue, usage accounting, audit log
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum QueueJobState {
+  WAITING
+  ACTIVE
+  COMPLETED
+  FAILED
+  DEAD
+}
+
+/// Backing table for the Postgres queue driver (src/server/queue/pg-queue.ts).
+/// Claimed with SELECT ... FOR UPDATE SKIP LOCKED.
+model QueueJob {
+  id          String   @id @default(cuid())
+  queue       String
+  name        String
+  payload     Json
+  state       QueueJobState @default(WAITING)
+  priority    Int      @default(0)
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  runAt       DateTime @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  result      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+
+  @@index([queue, state, runAt])
+  @@index([state, lockedAt])
+}
+
+/// §33 — provider request accounting so cost can be observed and capped.
+model UsageRecord {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  provider  String
+  operation String
+  units     Int      @default(1)
+  costUsd   Float?
+  cached    Boolean  @default(false)
+  day       String   // YYYY-MM-DD for cheap daily-cap queries
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId, day, provider])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    String
+  target    String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+}

@@ -1,0 +1,149 @@
+{
+  "name": "lumen",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universal Business Lead Intelligence & Website Audit Platform",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "worker": "tsx --conditions=react-server scripts/worker.ts",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx --conditions=react-server scripts/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "electron:compile": "tsc -p tsconfig.electron.json && node scripts/copy-electron-assets.mjs",
+    "desktop:build": "npm run build && node scripts/build-desktop.mjs && npm run electron:compile",
+    "desktop:start": "npm run desktop:build && electron .",
+    "desktop:pack": "npm run desktop:build && electron-builder --dir",
+    "desktop:dist": "npm run desktop:build && electron-builder --win nsis",
+    "desktop:publish": "npm run desktop:build && electron-builder --win nsis --publish always"
+  },
+  "prisma": {
+    "seed": "tsx --conditions=react-server scripts/seed.ts"
+  },
+  "dependencies": {
+    "@embedded-postgres/windows-x64": "^18.4.0-beta.17",
+    "@prisma/client": "^6.3.0",
+    "bcryptjs": "^2.4.3",
+    "cheerio": "^1.0.0",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "electron-updater": "^6.8.9",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "exceljs": "^4.4.0",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.474.0",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.1",
+    "prisma": "^6.3.0"
+  },
+  "optionalDependencies": {
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.2",
+    "playwright-core": "^1.49.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.4.20",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  },
+  "engines": {
+    "node": ">=20.10"
+  },
+  "main": "dist-electron/main.js",
+  "author": {
+    "name": "Lumen"
+  },
+  "build": {
+    "appId": "com.lumen.leadintelligence",
+    "productName": "Lumen",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "package.json",
+      "!node_modules/next/**",
+      "!node_modules/@next/**",
+      "!node_modules/react/**",
+      "!node_modules/react-dom/**",
+      "!node_modules/@prisma/client/**",
+      "!node_modules/.prisma/**",
+      "!node_modules/exceljs/**",
+      "!node_modules/cheerio/**",
+      "!node_modules/playwright-core/**",
+      "!node_modules/typescript/**",
+      "!node_modules/tailwindcss/**",
+      "!node_modules/esbuild/**",
+      "!node_modules/@esbuild/**",
+      "!node_modules/electron/**",
+      "!node_modules/electron-builder/**",
+      "!node_modules/app-builder-lib/**",
+      "!**/*.map",
+      "!**/*.ts",
+      "!**/*.md"
+    ],
+    "extraResources": [
+      {
+        "from": "prisma/schema.prisma",
+        "to": "app/prisma/schema.prisma"
+      }
+    ],
+    "asar": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Lumen",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "itmetasolutions",
+        "repo": "lumen",
+        "releaseType": "release"
+      }
+    ],
+    "afterPack": "scripts/after-pack.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itmetasolutions/lumen.git"
+  }
+}

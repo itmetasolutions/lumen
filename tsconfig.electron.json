@@ -1,0 +1,25 @@
+{
+  // The Electron main process is a plain Node CommonJS program, not part of the
+  // Next bundle. It is compiled separately into dist-electron/ so the packaged
+  // app never needs a TypeScript runtime.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    // node16 rather than plain "node": several runtime dependencies
+    // (embedded-postgres, electron-updater) publish `exports` maps that the
+    // legacy resolver cannot read. package.json has no "type": "module", so
+    // node16 still emits CommonJS, which is what Electron's main process needs.
+    "module": "node16",
+    "moduleResolution": "node16",
+    "outDir": "dist-electron",
+    "rootDir": "electron",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": false,
+    "noEmit": false,
+    "types": ["node"]
+  },
+  "include": ["electron/**/*.ts"]
+}
