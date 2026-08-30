@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireAuth } from '@/server/auth/guard'
 import { prisma } from '@/server/db/client'
 import { TABS, TAB_LABELS, type TabId } from '@/server/filters/schema'
+import { assignableAgents } from '@/server/crm/assignment'
 import { LeadsWorkspace } from '@/components/data-table/leads-workspace'
 
 export async function generateMetadata({
@@ -23,6 +24,10 @@ export default async function LeadsPage({
 
   const auth = await requireAuth()
 
+  // Only a supervisor can hand work out, so only they are given the list.
+  const canAssign = auth.role === 'OWNER' || auth.role === 'ADMIN'
+  const agents = canAssign ? await assignableAgents(auth.workspaceId) : []
+
   const views = await prisma.savedView.findMany({
     where: { workspaceId: auth.workspaceId },
     orderBy: { updatedAt: 'desc' },
@@ -42,6 +47,7 @@ export default async function LeadsPage({
       <LeadsWorkspace
         tab={tab as TabId}
         savedViews={views as never}
+        agents={agents.map((a) => ({ id: a.id, name: a.name, openLeads: a.openLeads }))}
       />
     </div>
   )

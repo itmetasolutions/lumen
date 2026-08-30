@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Search, SlidersHorizontal, Columns3, Download, Bookmark, RotateCw,
   ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Database, X, Check, ClipboardCheck,
-  Trash2, Sparkles,
+  Trash2, Sparkles, UserCheck,
 } from 'lucide-react'
 import {
   Badge, Button, Checkbox, EmptyState, Input, Select, TableSkeleton, Tooltip,
@@ -84,9 +84,12 @@ const DATE_PRESET_LABELS: Array<[DateRange['preset'], string]> = [
 export function LeadsWorkspace({
   tab,
   savedViews,
+  agents,
 }: {
   tab: TabId
   savedViews: SavedView[]
+  /** Empty for anyone who cannot assign; the control is then absent. */
+  agents: Array<{ id: string; name: string; openLeads: number }>
 }) {
   const [filters, setFilters] = useState<FilterGroup>(EMPTY_FILTER)
   const [search, setSearch] = useState('')
@@ -113,7 +116,8 @@ export function LeadsWorkspace({
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [selectAllMatching, setSelectAllMatching] = useState(false)
-  const [bulkAction, setBulkAction] = useState<'enrich' | 'delete-no-contact' | 'audit-missing' | null>(null)
+  const [bulkAction, setBulkAction] = useState<'enrich' | 'delete-no-contact' | 'audit-missing' | 'assign' | null>(null)
+  const [assignTo, setAssignTo] = useState('')
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -365,6 +369,53 @@ export function LeadsWorkspace({
       setSelected(new Set())
       setSelectAllMatching(false)
       setActionMessage(`Deleted ${formatNumber(json.deleted ?? 0)} no-contact leads.`)
+      await load()
+    } catch {
+      setActionError('Could not reach the server')
+    } finally {
+      setBulkAction(null)
+    }
+  }
+
+  /**
+   * Hand the selection to an agent.
+   *
+   * When the user has selected everything matching the filter, the ids are not
+   * sent — the filter is, and the server resolves it with the same compiler the
+   * table used. That is what keeps "assign all 1,240" from silently meaning
+   * "assign the 50 on this page".
+   */
+  async function assignSelected() {
+    if (!assignTo) return
+    setBulkAction('assign')
+    setActionMessage(null)
+    setActionError(null)
+    try {
+      const body = selectAllMatching
+        ? { mode: 'filter', assignedToId: assignTo, query }
+        : { mode: 'ids', assignedToId: assignTo, businessIds: Array.from(selected) }
+
+      const res = await fetch('/api/crm/assign', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setActionError(json.error ?? 'Could not assign these leads')
+        return
+      }
+
+      const agent = agents.find((a) => a.id === assignTo)?.name ?? 'the agent'
+      const reasons = Array.isArray(json.reasons) && json.reasons.length > 0
+        ? ` ${json.reasons.join('. ')}.`
+        : ''
+      setActionMessage(
+        `Assigned ${formatNumber(json.assigned ?? 0)} lead${json.assigned === 1 ? '' : 's'} to ${agent}.${reasons}`,
+      )
+      setSelected(new Set())
+      setSelectAllMatching(false)
+      setAssignTo('')
       await load()
     } catch {
       setActionError('Could not reach the server')
@@ -627,6 +678,33 @@ export function LeadsWorkspace({
           >
             Clear selection
           </button>
+          {agents.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={assignTo}
+                onChange={(e) => setAssignTo(e.target.value)}
+                className="h-7 w-[170px] text-[13px]"
+                aria-label="Assign the selection to an agent"
+              >
+                <option value="">Assign to…</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.openLeads})
+                  </option>
+                ))}
+              </Select>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!assignTo || bulkAction !== null}
+                loading={bulkAction === 'assign'}
+                onClick={() => void assignSelected()}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Assign
+              </Button>
+            </div>
+          )}
           <Button variant="primary" size="sm" onClick={() => setShowExport(true)}>
             <Download className="h-3.5 w-3.5" />
             Export selected

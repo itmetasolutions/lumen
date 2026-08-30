@@ -24,6 +24,13 @@ export const POST = route(
     const valid = user ? await verifyPassword(body.password, user.passwordHash) : false
     if (!user || !valid) throw new HttpError(401, 'Email or password is incorrect')
 
+    // A disabled account keeps its history but must not get a session. The
+    // check happens after the password comparison so a wrong password and a
+    // disabled account are indistinguishable from the outside.
+    if (!user.isActive) {
+      throw new HttpError(403, 'This account has been disabled. Ask your supervisor to re-enable it.')
+    }
+
     const membership = user.memberships[0]
     if (!membership) throw new HttpError(403, 'This account has no workspace')
 
@@ -38,6 +45,12 @@ export const POST = route(
       email: user.email,
     })
 
-    return { ok: true }
+    // The agent app and the admin app are different surfaces; the caller needs
+    // to know where to send this person after signing in.
+    return {
+      ok: true,
+      role: membership.role,
+      redirectTo: membership.role === 'AGENT' ? '/agent' : '/dashboard',
+    }
   },
 )

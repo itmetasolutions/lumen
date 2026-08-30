@@ -38,6 +38,9 @@ npm run desktop:dist
 | `desktop:pack` | Unpacked app in `release/win-unpacked` — quickest packaging smoke test |
 | `desktop:dist` | The installer: `release/Lumen-Setup.exe` |
 | `desktop:publish` | Builds and uploads to GitHub Releases (needs `GH_TOKEN`) |
+| `agent:pack` | Unpacked Lumen Agent in `release-agent/win-unpacked` |
+| `agent:dist` | The agent installer: `release-agent/Lumen Agent-Setup.exe` |
+| `agent:publish` | Builds and uploads the agent installer |
 
 The installer is named `Lumen-Setup.exe` with **no version in the filename**.
 That is deliberate: GitHub serves `/releases/latest/download/<asset-name>`, so a
@@ -87,6 +90,85 @@ the `.blockmap` is what makes later updates download only changed blocks.
 
 ---
 
+## The agent app
+
+`Lumen Agent` is a second installer built from the same repository, configured
+by `electron-builder.agent.json` with `electron/agent-main.ts` as its entry
+point. It is a **thin client** and that is the whole design:
+
+- No bundled PostgreSQL, no Next server, no background worker.
+- It opens the team's Lumen server at `/agent` and does nothing else.
+- Its only runtime dependency is `electron-updater`.
+
+Bundling a database here would give every agent their own private copy of the
+leads, which is the opposite of a shared queue. The `files` list in the agent
+config is therefore a strict allowlist — `!node_modules/**/*` followed by
+`electron-updater` and its transitive dependencies. Without it, electron-builder
+pulls in every production dependency in `package.json`, which took the packaged
+app from 345 MB to 914 MB and shipped Postgres binaries to people who will never
+run a query.
+
+`extraMetadata.name` is set to `lumen-agent`. Without it the build inherits
+`name: "lumen"` from `package.json`, Electron hands it the *admin* app's
+userData directory, and the two share a config file, a log and — fatally — a
+single-instance lock: on a machine running both, the agent app silently refuses
+to start because the admin app already holds it.
+
+### First run
+
+The agent is asked once for the address of the team's server. The address is
+probed before it is accepted, so a typo produces an explanation rather than a
+blank window. It is stored in:
+
+```
+%APPDATA%Lumen Agentagent-config.json
+```
+
+### Making the server reachable
+
+The admin app binds to `127.0.0.1` on a random port by default. To let agents
+connect, use **Team → Let my team connect** in the admin app: it rebinds to
+`0.0.0.0` on the fixed port from `config.sharePort` (3210 by default) and
+restarts. **Team → Show address for agents…** lists the addresses to hand out.
+
+### Two apps, one repository, two update feeds
+
+Both installers publish to the same GitHub repository and share a release. That
+only works because they read **different update feeds**:
+
+| | Installer | Feed |
+|---|---|---|
+| Lumen | `Lumen-Setup.exe` | `latest.yml` |
+| Lumen Agent | `Lumen-Agent-Setup.exe` | `agent.yml` |
+
+electron-updater looks for `latest.yml` unless told otherwise, so without this
+the two feeds collide: whichever app published last wins, and the other offers
+its installer to the wrong app — an agent's 97 MB client silently replaced by
+the 300 MB server build on next launch.
+
+Two settings keep them apart, and **both** are required:
+
+- `publish.channel: "agent"` in `electron-builder.agent.json` — makes the build
+  write `agent.yml` instead of `latest.yml`.
+- `initUpdater({ channel: 'agent' }, …)` in `electron/agent-main.ts` — makes the
+  installed app read it.
+
+A release should carry five assets: both `.exe` files, both `.blockmap` files,
+and both `latest.yml` and `agent.yml`.
+
+### Releasing both
+
+```bash
+set GH_TOKEN=your_personal_access_token
+npm run desktop:publish
+npm run agent:publish
+```
+
+Run them in either order — they write different filenames, so neither
+overwrites the other's assets. Publish the draft release once, afterwards.
+
+---
+
 ## How updating works
 
 1. Bump `version` in `package.json`.
@@ -129,8 +211,15 @@ ship a migration rather than relying on `db push`.
 generated on first run. They are never shipped in the installer, so one leaked
 binary exposes nobody's data.
 
-Uninstalling does **not** delete this folder (`deleteAppDataOnUninstall: false`)
-— it is the user's database, not application cache.
+The agent app keeps its own, deliberately separate, directory:
+
+```
+%APPDATA%Lumen Agent├── agent-config.json   the server address and window size
+└── lumen.log           connection log
+```
+
+Uninstalling does **not** delete either folder (`deleteAppDataOnUninstall: false`)
+— the first is the user's database, not application cache.
 
 ---
 

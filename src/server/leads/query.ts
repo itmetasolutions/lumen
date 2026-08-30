@@ -192,6 +192,17 @@ export async function getBusinessProfile(workspaceId: string, id: string) {
       website: true,
       opportunities: true,
       outreach: { include: { notes: { orderBy: { createdAt: 'desc' }, take: 50 } } },
+      // Who owns this lead and what has been said to it. The profile is where a
+      // supervisor answers "why has nobody called them back", so the calling
+      // record belongs beside the audit findings rather than on another page.
+      assignedTo: {
+        select: { id: true, name: true, email: true, avatarPath: true },
+      },
+      callLogs: {
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        include: { user: { select: { id: true, name: true, email: true } } },
+      },
       audits: {
         orderBy: { startedAt: 'desc' },
         take: 12,

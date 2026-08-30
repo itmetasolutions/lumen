@@ -17,6 +17,9 @@ async function main() {
   const { runAudit } = await import('../src/server/audit/run')
   const { runExportJob } = await import('../src/server/export/run')
   const { runImport } = await import('../src/server/import/run')
+  const { runCrmMaintenanceJob, workspacesNeedingMaintenance } = await import(
+    '../src/server/crm/maintenance'
+  )
   const { env } = await import('../src/server/env')
 
   const requested = process.argv
@@ -33,12 +36,14 @@ async function main() {
     'audit.site': runAudit,
     'export.run': runExportJob,
     'import.run': runImport,
+    'crm.maintenance': runCrmMaintenanceJob,
   } as const
 
   const plan: Array<{ name: string; concurrency: number }> = [
     { name: 'discovery', concurrency: env.concurrencyDiscovery },
     { name: 'audit', concurrency: env.concurrencyAudit },
     { name: 'export', concurrency: 2 },
+    { name: 'crm', concurrency: 1 },
   ].filter((q) => !requested || requested.includes(q.name))
 
   if (plan.length === 0) {
@@ -51,10 +56,12 @@ async function main() {
   )
 
   let shuttingDown = false
+  let ticker: NodeJS.Timeout | null = null
   const shutdown = async (signal: string) => {
     if (shuttingDown) return
     shuttingDown = true
     console.log(`[worker] ${signal} received — finishing in-flight jobs`)
+    if (ticker) clearInterval(ticker)
     await queue.stop()
     // In-flight handlers are allowed to complete; the visibility timeout
     // reclaims anything that does not.
@@ -63,6 +70,40 @@ async function main() {
 
   process.on('SIGINT', () => void shutdown('SIGINT'))
   process.on('SIGTERM', () => void shutdown('SIGTERM'))
+
+  /**
+   * Maintenance tick.
+   *
+   * The CRM's automation has no cron: the worker enqueues an upkeep job per
+   * workspace every few minutes and the handler decides what is actually due.
+   * That way a worker restarted at noon still catches up last night's reports,
+   * and nothing depends on a scheduler being configured correctly.
+   */
+  const TICK_MINUTES = 5
+  const runningCrm = !requested || requested.includes('crm')
+
+  const tick = async () => {
+    if (shuttingDown) return
+    try {
+      const workspaceIds = await workspacesNeedingMaintenance()
+      if (workspaceIds.length > 0) {
+        await queue.enqueueMany(
+          'crm.maintenance',
+          workspaceIds.map((workspaceId) => ({ workspaceId })),
+          { maxAttempts: 1 },
+        )
+      }
+    } catch (err) {
+      // Upkeep is best-effort — a failed tick must never stop the worker.
+      console.error('[worker] crm tick failed:', err)
+    }
+  }
+
+  if (runningCrm) {
+    void tick()
+    ticker = setInterval(() => void tick(), TICK_MINUTES * 60_000)
+    ticker.unref()
+  }
 
   process.on('unhandledRejection', (reason) => {
     // A rejected promise inside a stage must not take the worker down —

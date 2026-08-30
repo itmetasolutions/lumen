@@ -5,10 +5,11 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Search, History, Database, Globe, PaintRoller,
   TrendingUp, Gauge, Flame, Sparkles, FileDown, Bookmark, Settings,
-  Map as MapIcon, ClipboardCheck,
+  Map as MapIcon, ClipboardCheck, Users, BarChart3, Radio,
 } from 'lucide-react'
 import { cn, formatNumber } from '@/lib/utils'
 import type { TabCounts } from '@/server/leads/query'
+import type { Role } from '@prisma/client'
 
 /**
  * Primary navigation (§35, §36).
@@ -33,11 +34,16 @@ interface NavSection {
 export function Sidebar({
   counts,
   workspaceName,
+  role,
 }: {
   counts: TabCounts
   workspaceName: string
+  role: Role
 }) {
   const pathname = usePathname()
+  // Running the calling floor is a supervisor's job — the section is absent for
+  // everyone else rather than present and refusing to work.
+  const isSupervisor = role === 'OWNER' || role === 'ADMIN'
 
   const sections: NavSection[] = [
     {
@@ -63,6 +69,18 @@ export function Sidebar({
         { href: '/leads/new', label: 'New Leads', icon: Sparkles, count: counts.new },
       ],
     },
+    ...(isSupervisor
+      ? [
+          {
+            label: 'Calling floor',
+            items: [
+              { href: '/floor', label: 'Live Floor', icon: Radio },
+              { href: '/reports', label: 'Reports', icon: BarChart3 },
+              { href: '/team', label: 'Team', icon: Users },
+            ],
+          },
+        ]
+      : []),
     {
       label: 'Workspace',
       items: [

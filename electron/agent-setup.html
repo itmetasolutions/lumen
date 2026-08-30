@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lumen Agent — Setup</title>
+    <style>
+      :root {
+        --bg: #0f1523;
+        --surface: #161d2e;
+        --border: #263149;
+        --fg: #e8eef7;
+        --muted: #93a1b8;
+        --subtle: #6b7a94;
+        --accent: #6366f1;
+        --danger: #f87171;
+        --ok: #4ade80;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.55 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        cursor: default;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 34px 36px;
+        user-select: none;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 22px;
+      }
+      .brand svg { color: var(--accent); }
+      .brand h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+      .brand p { margin: 1px 0 0; font-size: 11px; color: var(--subtle); }
+
+      h2 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+      .lede { margin: 0 0 18px; color: var(--muted); }
+
+      label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 500; }
+      input {
+        width: 100%;
+        height: 38px;
+        padding: 0 11px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--surface);
+        color: var(--fg);
+        font: inherit;
+        user-select: text;
+        outline: none;
+      }
+      input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(99 102 241 / 0.18); }
+      input[aria-invalid='true'] { border-color: var(--danger); }
+
+      .hint { margin: 7px 0 0; font-size: 11px; color: var(--subtle); }
+      .hint code {
+        padding: 1px 4px;
+        border-radius: 4px;
+        background: rgb(255 255 255 / 0.06);
+        font-family: ui-monospace, Menlo, monospace;
+      }
+
+      .message { margin: 14px 0 0; min-height: 34px; font-size: 12px; }
+      .message.error { color: var(--danger); }
+      .message.ok { color: var(--ok); }
+      .message.busy { color: var(--muted); }
+
+      button {
+        width: 100%;
+        height: 38px;
+        margin-top: 4px;
+        border: 0;
+        border-radius: 9px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 120ms ease;
+      }
+      button:hover:not(:disabled) { opacity: 0.9; }
+      button:disabled { opacity: 0.5; cursor: default; }
+
+      footer { margin-top: 20px; font-size: 11px; color: var(--subtle); }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6" opacity="0.5" />
+        <circle cx="12" cy="12" r="4" fill="currentColor" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <div>
+        <h1>Lumen Agent</h1>
+        <p id="version"></p>
+      </div>
+    </div>
+
+    <h2>Where is your team's Lumen?</h2>
+    <p class="lede">
+      This app connects to the Lumen your supervisor runs — that is where your
+      leads live. Ask them for the address and enter it once.
+    </p>
+
+    <form id="form">
+      <label for="server">Server address</label>
+      <input
+        id="server"
+        type="text"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="192.168.1.10:3210"
+        autofocus
+      />
+      <p class="hint">
+        Something like <code>192.168.1.10:3210</code> or
+        <code>https://lumen.yourcompany.com</code>. You do not need to type
+        <code>http://</code>.
+      </p>
+
+      <div class="message" id="message"></div>
+
+      <button type="submit" id="submit">Connect</button>
+    </form>
+
+    <footer>Your sign-in details are asked for on the next screen.</footer>
+
+    <script>
+      const form = document.getElementById('form')
+      const input = document.getElementById('server')
+      const submit = document.getElementById('submit')
+      const message = document.getElementById('message')
+      const version = document.getElementById('version')
+
+      function say(text, kind) {
+        message.textContent = text
+        message.className = 'message' + (kind ? ' ' + kind : '')
+      }
+
+      window.agentSetup.getConfig().then(function (config) {
+        version.textContent = 'Version ' + config.version
+        if (config.serverUrl) {
+          input.value = config.serverUrl
+          // Reaching setup with an address already stored means it stopped
+          // answering — say so, rather than looking like a fresh install.
+          say('Lumen did not answer at this address. Check it and try again.', 'error')
+          input.setAttribute('aria-invalid', 'true')
+        }
+      })
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault()
+        const value = input.value.trim()
+        if (!value) {
+          say('Enter the address your supervisor gave you.', 'error')
+          return
+        }
+
+        submit.disabled = true
+        input.removeAttribute('aria-invalid')
+        say('Looking for Lumen at that address…', 'busy')
+
+        const result = await window.agentSetup.setServer(value)
+        if (result.ok) {
+          say('Found it. Opening…', 'ok')
+          return
+        }
+
+        input.setAttribute('aria-invalid', 'true')
+        say(result.error || 'Could not connect.', 'error')
+        submit.disabled = false
+        input.focus()
+        input.select()
+      })
+    </script>
+  </body>
+</html>

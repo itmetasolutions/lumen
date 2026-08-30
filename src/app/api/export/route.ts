@@ -5,6 +5,7 @@ import { querySchema, TABS } from '@/server/filters/schema'
 import { COLUMN_MAP, DEFAULT_EXPORT_COLUMNS } from '@/server/export/columns'
 import { compileQuery } from '@/server/filters/compile'
 import { route, HttpError } from '@/app/api/_lib/handler'
+import { requireRole } from '@/server/auth/guard'
 
 /**
  * Export creation (§9, §37).
@@ -24,6 +25,9 @@ const schema = z.object({
 })
 
 export const POST = route({ schema, limit: 'expensive' }, async ({ auth, body }) => {
+  // Agents cannot take lead data out of the workspace.
+  requireRole(auth, 'MEMBER')
+
   if (body.scope === 'SELECTED' && body.ids.length === 0) {
     throw new HttpError(400, 'No rows were selected')
   }
@@ -76,6 +80,9 @@ export const POST = route({ schema, limit: 'expensive' }, async ({ auth, body })
 })
 
 export const GET = route({ limit: 'read' }, async ({ auth }) => {
+  // Agents cannot take lead data out of the workspace.
+  requireRole(auth, 'MEMBER')
+
   const jobs = await prisma.exportJob.findMany({
     where: { workspaceId: auth.workspaceId },
     orderBy: { createdAt: 'desc' },

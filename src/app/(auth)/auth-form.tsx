@@ -4,7 +4,14 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Input, Label } from '@/components/ui/primitives'
 
-export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+export function AuthForm({
+  mode,
+  /** Where to go after signing in; already validated as an in-app path. */
+  next,
+}: {
+  mode: 'login' | 'register'
+  next?: string | null
+}) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,8 +49,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         return
       }
 
-      // Full navigation so server components pick up the new session cookie.
-      router.push('/dashboard')
+      // Agents and supervisors land in different applications. The server
+      // decides which, from the membership role — the client has no session yet
+      // and cannot know.
+      // An explicit destination wins — it is where they were headed before
+      // being asked to sign in. Otherwise the server picks by role.
+      router.push(
+        next ?? (typeof data.redirectTo === 'string' ? data.redirectTo : '/dashboard'),
+      )
       router.refresh()
     } catch {
       setError('Could not reach the server. Is it running?')

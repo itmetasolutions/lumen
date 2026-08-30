@@ -3,6 +3,7 @@ import { prisma } from '@/server/db/client'
 import { getQueue } from '@/server/queue'
 import { getProvider } from '@/server/discovery/providers'
 import { route, HttpError } from '@/app/api/_lib/handler'
+import { requireRole } from '@/server/auth/guard'
 
 const schema = z.object({
   name: z.string().max(140).optional(),
@@ -24,6 +25,9 @@ const schema = z.object({
 })
 
 export const POST = route({ schema, limit: 'expensive' }, async ({ auth, body }) => {
+  // Discovery spends provider quota and creates leads — agents work the leads they are given.
+  requireRole(auth, 'MEMBER')
+
   // A location must be specified at *some* level — otherwise the geocoder has
   // nothing to resolve and we would silently search a default city.
   if (!body.country && !body.region && !body.city && !body.area && !body.postalCode) {

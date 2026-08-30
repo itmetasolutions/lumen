@@ -1,6 +1,5 @@
 import { app, dialog, BrowserWindow } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import type { AppConfig } from './config'
 import { log } from './log'
 
 /**
@@ -16,7 +15,26 @@ import { log } from './log'
 
 let checking = false
 
-export function initUpdater(config: AppConfig, getWindow: () => BrowserWindow | null): void {
+/** Only the feed override is needed, so both the admin and agent builds fit. */
+export interface UpdaterConfig {
+  updateFeedUrl?: string
+  /**
+   * Which update feed to read.
+   *
+   * The admin app and the agent app publish to one GitHub repository, and
+   * electron-updater looks for `latest.yml` unless told otherwise. Left at the
+   * default, the two feeds would collide in the same release and each app would
+   * offer the other's installer as its own update — an agent's 97 MB client
+   * quietly replaced by the 300 MB server build. The agent sets 'agent', which
+   * matches `publish.channel` in electron-builder.agent.json.
+   */
+  channel?: string
+}
+
+export function initUpdater(
+  config: UpdaterConfig,
+  getWindow: () => BrowserWindow | null,
+): void {
   autoUpdater.autoDownload = true
   // We install on quit ourselves, so the user is never restarted unexpectedly.
   autoUpdater.autoInstallOnAppQuit = true
@@ -25,6 +43,11 @@ export function initUpdater(config: AppConfig, getWindow: () => BrowserWindow | 
     warn: (m: unknown) => log(`updater(warn): ${String(m)}`),
     error: (m: unknown) => log(`updater(error): ${String(m)}`),
     debug: () => {},
+  }
+
+  if (config.channel) {
+    autoUpdater.channel = config.channel
+    log(`updater: reading the "${config.channel}" channel`)
   }
 
   if (config.updateFeedUrl) {

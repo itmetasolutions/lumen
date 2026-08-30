@@ -20,6 +20,21 @@ export interface AppConfig {
   /** Overrides the compiled-in update feed when set. */
   updateFeedUrl?: string
   autoCheckUpdates: boolean
+
+  /**
+   * Accept connections from other machines on the network.
+   *
+   * Off by default, and deliberately so: turning it on makes this workspace's
+   * leads reachable by anything that can route to this computer. It exists
+   * because the agent app is a client — agents have to reach the server their
+   * supervisor runs, and on a small team that server is this very machine.
+   */
+  shareOnNetwork: boolean
+  /**
+   * The port used when sharing. Fixed rather than random, because the address
+   * has to be written down once and keep working after a restart.
+   */
+  sharePort: number
 }
 
 const CONFIG_FILE = () => path.join(userDataDir(), 'config.json')
@@ -31,6 +46,9 @@ function randomSecret(bytes = 32): string {
 /** Postgres port for the bundled cluster; kept off the default 5432 so it
  *  cannot collide with a Postgres the user already runs. */
 const DEFAULT_DB_PORT = 54329
+
+/** Default port for network sharing; high enough to need no privileges. */
+const DEFAULT_SHARE_PORT = 3210
 
 export function loadConfig(): AppConfig {
   const file = CONFIG_FILE()
@@ -52,6 +70,8 @@ export function loadConfig(): AppConfig {
     externalDatabaseUrl: existing.externalDatabaseUrl,
     updateFeedUrl: existing.updateFeedUrl,
     autoCheckUpdates: existing.autoCheckUpdates ?? true,
+    shareOnNetwork: existing.shareOnNetwork ?? false,
+    sharePort: existing.sharePort ?? DEFAULT_SHARE_PORT,
   }
 
   saveConfig(config)

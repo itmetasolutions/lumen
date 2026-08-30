@@ -1,9 +1,11 @@
 import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron'
 import path from 'node:path'
 import { ensureDirs, logFile, userDataDir } from './paths'
-import { loadConfig } from './config'
+import { loadConfig, saveConfig, type AppConfig } from './config'
 import { startDatabase, stopDatabase, syncSchema } from './database'
-import { startServer, startWorker, stopAll, setUnexpectedExitHandler } from './server'
+import {
+  startServer, startWorker, stopAll, setUnexpectedExitHandler, localAddresses,
+} from './server'
 import { initUpdater, checkForUpdates } from './updater'
 import { log, recentLog } from './log'
 
@@ -20,6 +22,8 @@ import { log, recentLog } from './log'
 let splashWindow: BrowserWindow | null = null
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
+let runtime: { url: string; lanUrls: string[] } | null = null
+let appConfig: AppConfig | null = null
 
 // Only one copy may own the database directory.
 if (!app.requestSingleInstanceLock()) {
@@ -114,10 +118,14 @@ async function boot(): Promise<void> {
   await syncSchema(config)
 
   stage('Starting the application')
-  const { url, port } = await startServer(config)
+  const { url, port, lanUrls } = await startServer(config)
 
   stage('Starting the background worker', 'Discovery, audits and exports run here.')
   startWorker(config, port)
+
+  runtime = { url, lanUrls }
+  appConfig = config
+  Menu.setApplicationMenu(buildMenu())
 
   mainWindow = createMainWindow(url)
 
@@ -149,7 +157,6 @@ function reportBootFailure(err: unknown): void {
 }
 
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(buildMenu())
   splashWindow = createSplash()
 
   setUnexpectedExitHandler((message) => {
@@ -203,7 +210,95 @@ ipcMain.handle('app:open-logs', async () => {
   return userDataDir()
 })
 
+/**
+ * Turning network sharing on or off.
+ *
+ * The server binds its interface at startup, so this cannot take effect until
+ * the app restarts — and saying so up front is better than a switch that
+ * appears to do nothing. Sharing is a real exposure decision, so the dialog
+ * states what it means rather than just asking for confirmation.
+ */
+async function toggleSharing(): Promise<void> {
+  if (!appConfig) return
+  const turningOn = !appConfig.shareOnNetwork
+
+  const { response } = await dialog.showMessageBox(mainWindow ?? undefined!, {
+    type: 'question',
+    title: turningOn ? 'Let your team connect' : 'Stop sharing',
+    message: turningOn
+      ? 'Allow other computers on your network to reach this Lumen?'
+      : 'Stop other computers from reaching this Lumen?',
+    detail: turningOn
+      ? [
+          'Your agents need this to sign in from the Lumen Agent app.',
+          `Anything that can reach this computer on port ${appConfig.sharePort} will be able ` +
+            'to open the sign-in page. They still need an account you created before they ' +
+            'can see anything. Do not turn this on over a public or untrusted network.',
+          'Lumen needs to restart for this to take effect.',
+        ].join('\n\n')
+      : [
+          'Agents will no longer be able to connect from their own machines.',
+          'Lumen needs to restart for this to take effect.',
+        ].join('\n\n'),
+    buttons: [turningOn ? 'Turn on and restart' : 'Turn off and restart', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  if (response !== 0) return
+
+  appConfig = { ...appConfig, shareOnNetwork: turningOn }
+  saveConfig(appConfig)
+  app.relaunch()
+  app.quit()
+}
+
+/** Shows the addresses to read out to agents, and puts one on the clipboard. */
+async function showTeamAddress(): Promise<void> {
+  const { clipboard } = require('electron') as typeof import('electron')
+  const urls = runtime?.lanUrls.length
+    ? runtime.lanUrls
+    : appConfig?.shareOnNetwork
+      ? localAddresses(appConfig.sharePort)
+      : []
+
+  if (urls.length === 0) {
+    await dialog.showMessageBox(mainWindow ?? undefined!, {
+      type: 'info',
+      title: 'Not shared',
+      message: 'This Lumen is not reachable from other computers.',
+      detail:
+        'Turn on "Let my team connect" first. Until then, only this computer can open it.',
+    })
+    return
+  }
+
+  const { response } = await dialog.showMessageBox(mainWindow ?? undefined!, {
+    type: 'info',
+    title: 'Your team address',
+    message: 'Give your agents this address:',
+    detail: [
+      urls.join('\n'),
+      'They enter it once, the first time they open the Lumen Agent app.',
+      // Several interfaces means several addresses, only one of which will
+      // route to the agents' machines. Say which to pick rather than listing
+      // them without explanation.
+      ...(urls.length > 1
+        ? [
+            'More than one is listed because this computer is on several ' +
+              'networks. Use the one on the same network as your agents.',
+          ]
+        : []),
+    ].join('\n\n'),
+    buttons: ['Copy address', 'Close'],
+    defaultId: 0,
+  })
+
+  if (response === 0) clipboard.writeText(urls[0]!)
+}
+
 function buildMenu(): Menu {
+  const sharing = appConfig?.shareOnNetwork ?? false
+
   return Menu.buildFromTemplate([
     {
       label: 'File',
@@ -224,6 +319,29 @@ function buildMenu(): Menu {
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
         { type: 'separator' }, { role: 'togglefullscreen' },
         { role: 'toggleDevTools' },
+      ],
+    },
+    {
+      label: 'Team',
+      submenu: [
+        {
+          label: 'Let my team connect',
+          type: 'checkbox',
+          checked: sharing,
+          click: () => void toggleSharing(),
+        },
+        {
+          label: 'Show address for agents…',
+          enabled: sharing,
+          click: () => void showTeamAddress(),
+        },
+        { type: 'separator' },
+        {
+          label: sharing
+            ? `Sharing on port ${appConfig?.sharePort ?? ''}`
+            : 'Not shared — this computer only',
+          enabled: false,
+        },
       ],
     },
     {
