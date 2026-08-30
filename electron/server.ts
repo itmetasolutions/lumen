@@ -1,4 +1,5 @@
 import net from 'node:net'
+import os from 'node:os'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import {
@@ -27,6 +28,8 @@ let shuttingDown = false
 export interface RuntimeHandle {
   port: number
   url: string
+  /** Addresses agents can be given, when sharing is on. */
+  lanUrls: string[]
 }
 
 /** Ask the OS for a free port rather than guessing one that may be taken. */
@@ -50,7 +53,9 @@ function childEnv(config: AppConfig, port: number): NodeJS.ProcessEnv {
   return nodeChildEnv({
     NODE_ENV: 'production',
     PORT: String(port),
-    HOSTNAME: '127.0.0.1',
+    // 0.0.0.0 only when the user has asked for it. The default stays on the
+    // loopback interface, where nothing outside this machine can reach it.
+    HOSTNAME: config.shareOnNetwork ? '0.0.0.0' : '127.0.0.1',
     DATABASE_URL: databaseUrl(config),
     DATABASE_URL_UNPOOLED: databaseUrl(config),
     AUTH_SECRET: config.authSecret,
@@ -69,10 +74,16 @@ export async function startServer(config: AppConfig): Promise<RuntimeHandle> {
     )
   }
 
-  const port = await findFreePort()
+  // A shared server needs a stable address someone can write down; a private
+  // one can take whatever port the OS has spare.
+  const port = config.shareOnNetwork ? config.sharePort : await findFreePort()
   const url = `http://127.0.0.1:${port}`
+  const lanUrls = config.shareOnNetwork ? localAddresses(port) : []
 
-  log(`server: starting on ${url}`)
+  log(
+    `server: starting on ${url}` +
+      (lanUrls.length > 0 ? ` (also reachable at ${lanUrls.join(', ')})` : ''),
+  )
   serverProcess = spawn(nodeExecutable(), [serverJs], {
     cwd: standaloneDir(),
     env: childEnv(config, port),
@@ -90,7 +101,25 @@ export async function startServer(config: AppConfig): Promise<RuntimeHandle> {
   await waitForHttp(`${url}/login`, 60_000)
   log('server: ready')
 
-  return { port, url }
+  return { port, url, lanUrls }
+}
+
+/**
+ * The addresses an agent could actually type.
+ *
+ * Only IPv4, and only non-internal interfaces: a supervisor reading an address
+ * out to their team needs the one on the office network, not a loopback or a
+ * link-local address that will not route.
+ */
+export function localAddresses(port: number): string[] {
+  const urls: string[] = []
+  for (const addresses of Object.values(os.networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family !== 'IPv4' || address.internal) continue
+      urls.push(`http://${address.address}:${port}`)
+    }
+  }
+  return urls
 }
 
 export function startWorker(config: AppConfig, port: number): void {

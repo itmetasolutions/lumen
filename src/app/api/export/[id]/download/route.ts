@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { prisma } from '@/server/db/client'
-import { requireApiAuth } from '@/server/auth/guard'
+import { requireApiAuth, requireRole } from '@/server/auth/guard'
 import { errorResponse } from '@/app/api/_lib/handler'
 
 /**
@@ -19,6 +19,8 @@ export async function GET(
 ) {
   try {
     const auth = await requireApiAuth()
+    // Agents cannot take lead data out of the workspace.
+    requireRole(auth, 'MEMBER')
     const { id } = await params
 
     const job = await prisma.exportJob.findFirst({

@@ -1,6 +1,7 @@
 import { querySchema } from '@/server/filters/schema'
 import { matchingIds } from '@/server/leads/query'
 import { route } from '@/app/api/_lib/handler'
+import { requireRole } from '@/server/auth/guard'
 
 /**
  * Returns every id matching the current filter, so "select all N matching" can
@@ -8,6 +9,9 @@ import { route } from '@/app/api/_lib/handler'
  * cannot build a multi-megabyte request body.
  */
 export const POST = route({ schema: querySchema, limit: 'read' }, async ({ auth, body }) => {
+  // Bulk id listing backs export selection.
+  requireRole(auth, 'MEMBER')
+
   const ids = await matchingIds(auth.workspaceId, body)
   return { ids, truncated: ids.length >= 10_000 }
 })

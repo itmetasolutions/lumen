@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Universal Business Lead Intelligence & Website Audit Platform",
   "scripts": {
@@ -22,7 +22,11 @@
     "desktop:start": "npm run desktop:build && electron .",
     "desktop:pack": "npm run desktop:build && electron-builder --dir",
     "desktop:dist": "npm run desktop:build && electron-builder --win nsis",
-    "desktop:publish": "npm run desktop:build && electron-builder --win nsis --publish always"
+    "desktop:publish": "npm run desktop:build && electron-builder --win nsis --publish always",
+    "agent:build": "npm run electron:compile",
+    "agent:pack": "npm run agent:build && electron-builder --config electron-builder.agent.json --dir",
+    "agent:dist": "npm run agent:build && electron-builder --config electron-builder.agent.json --win nsis",
+    "agent:publish": "npm run agent:build && electron-builder --config electron-builder.agent.json --win nsis --publish always"
   },
   "prisma": {
     "seed": "tsx --conditions=react-server scripts/seed.ts"

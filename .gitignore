@@ -11,3 +11,5 @@ coverage/
 .DS_Store
 dist-electron/
 release/
+# The agent installer is built the same way and is just as large.
+release-agent/

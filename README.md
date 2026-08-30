@@ -11,6 +11,10 @@ no website, who needs a redesign, who has SEO problems, who is slow, who has
 several of those at once, who is worth calling first, and what evidence supports
 each of those claims.
 
+Then hand those leads to a calling team and watch the work happen: assign
+queues, log every call against a fixed outcome vocabulary, track shifts, and
+read a daily report per agent that nobody had to write.
+
 > Not a Google Maps scraper. Google Places is one adapter behind a provider
 > interface, and OpenStreetMap works with no API key at all, so the product is
 > useful with real data out of the box.
@@ -19,33 +23,52 @@ each of those claims.
 
 ## Download
 
-**[⬇ Download Lumen for Windows](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)**
+Lumen ships as two Windows apps. Install the first on the machine that will
+hold your leads; install the second on each agent's machine.
+
+| | For | Download |
+|---|---|---|
+| **Lumen** | You — discovery, audits, assigning work, reports | **[⬇ Download Lumen](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)** |
+| **Lumen Agent** | Your callers — their queue and nothing else | **[⬇ Download Lumen Agent](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Agent-Setup.exe)** |
 
 [![Latest release](https://img.shields.io/github/v/release/itmetasolutions/lumen?label=latest&style=flat-square)](https://github.com/itmetasolutions/lumen/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/itmetasolutions/lumen/total?style=flat-square)](https://github.com/itmetasolutions/lumen/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue?style=flat-square)](https://github.com/itmetasolutions/lumen/releases/latest)
 
-That link always serves the newest installer — it never needs updating when you
+Both links always serve the newest installer — neither needs updating when you
 publish a new version. [All releases and changelogs](https://github.com/itmetasolutions/lumen/releases).
 
-Everything is included: the app bundles its own PostgreSQL and background worker,
-so there is no database to install and nothing to configure before first launch.
-It runs offline apart from the discovery providers themselves.
+**Lumen** includes everything: it bundles its own PostgreSQL and background
+worker, so there is no database to install and nothing to configure before first
+launch. It runs offline apart from the discovery providers themselves.
 
-**Requirements** — Windows 10 or 11, 64-bit. Roughly 700 MB on disk after
-install. Microsoft Edge or Google Chrome must be present for UX audits and
-screenshots; both are optional for everything else.
+**Lumen Agent** (97 MB) is a thin client with no database of its own — agents
+and their supervisor have to be looking at the same leads. On first run it asks
+once for the address of your Lumen, which you get from **Team → Show address for
+agents…** in the main app. Do not hand it out before turning on **Team → Let my
+team connect**; see [Running a team](#running-a-team).
 
-**First launch takes a minute** while it initialises its local database. The
-splash screen reports each step, so you can see it working.
+> You only need Lumen Agent if you have people making calls. A one-person setup
+> is just the first app.
 
-**Updates install themselves.** The app checks on launch and from
-*Help → Check for Updates…*, downloads in the background, and offers to restart.
-Running jobs survive a restart — they live in the database queue, not in memory.
+**Requirements** — Windows 10 or 11, 64-bit for both. Lumen needs roughly 700 MB
+on disk after install, and Microsoft Edge or Google Chrome present for UX audits
+and screenshots (optional for everything else). Lumen Agent needs about 350 MB
+and a network route to your Lumen — nothing else.
 
-> **Windows SmartScreen will warn you.** The installer is not code-signed yet, so
+**Lumen's first launch takes a minute** while it initialises its local database.
+The splash screen reports each step, so you can see it working. Lumen Agent
+starts immediately — it has no database to build.
+
+**Updates install themselves.** Both apps check on launch, download in the
+background and offer to restart. They read separate update feeds from the same
+release, so an agent is never offered the server build by mistake. Running jobs
+survive a restart — they live in the database queue, not in memory.
+
+> **Windows SmartScreen will warn you.** Neither installer is code-signed yet, so
 > you will see *"Windows protected your PC"*. Click **More info → Run anyway**.
-> Signing is on the roadmap; see [`docs/DESKTOP.md`](docs/DESKTOP.md).
+> Worth telling your agents before they hit it. Signing is on the roadmap; see
+> [`docs/DESKTOP.md`](docs/DESKTOP.md).
 
 ---
 
@@ -181,7 +204,84 @@ qualifies for.
 Clicking a business opens the full profile: contact and provenance, website
 status, every audit finding with its evidence, mobile and desktop performance,
 screenshots at two viewports, the reason each opportunity triggered, audit
-history over time, and a lightweight outreach status with notes and tags.
+history over time, who the lead is assigned to, its full calling record, and a
+lightweight outreach status with notes and tags. Phone numbers and emails are
+click-to-copy, because that is what an agent actually does with them.
+
+---
+
+## Cold-calling CRM
+
+Lumen ships as two applications over one database: the **admin app**, where
+leads are found and work is handed out, and the **Lumen Agent** app, where the
+calling happens.
+
+### For the supervisor
+
+- **Team** — accounts exist only because an admin created one. There is no
+  sign-up page into an existing workspace. Creating someone issues a temporary
+  password shown exactly once; they are forced to replace it at first sign-in.
+  Accounts are *disabled*, never deleted, because their call history is what the
+  reports are built from. Disabling someone returns their leads to the pool.
+- **Assignment** — hand leads to an agent one at a time from the lead profile,
+  in bulk from any filtered view, or automatically. Assigning "everything
+  matching this filter" resolves through the same compiler the table uses, so it
+  means exactly what is on screen. A lead marked do-not-call is never assigned to
+  anyone by any route.
+- **Live floor** — who is online, who is on shift, which lead each agent has
+  open, calls and contact rate so far today, and a live feed of dispositions.
+  Polls every five seconds and pauses when the tab is in the background.
+- **Reports** — a stored snapshot per agent per day, so past numbers never drift.
+  Contact rate and calls-per-hour render as *unknown* rather than zero when
+  there is nothing to divide by.
+
+### For the agent
+
+- A queue, not a database. Ordering is the calling strategy and is not
+  adjustable: overdue follow-ups, then due today, then never called by lead
+  score, then everything worked but unscheduled.
+- **Clock in / clock out**, with shift time and active time tracked separately.
+  Active time accrues server-side from heartbeats and is capped, so a laptop
+  left open overnight adds no work.
+- **One disposition screen** per call: the number, the business, what to talk
+  about, eleven outcomes, notes, and a follow-up that is *mandatory* for any
+  outcome that promises one. Call records cannot be edited or deleted — a
+  mistake is corrected with a new call and a note, the way a ledger is.
+- Agents cannot run discovery, export, import, or see anyone else's leads.
+  Those are server-side 403s, not hidden buttons.
+
+### Automation
+
+The worker ticks every five minutes and decides for itself what is due, so a
+worker stopped for a day catches up rather than losing the day:
+
+- Rolls each day up into reports after the workspace's reporting hour, in the
+  workspace's own timezone.
+- Writes yesterday's reports if nothing was running when the day ended.
+- Closes shifts people forgot to clock out of, ending them at the last credited
+  activity rather than at "now".
+- Returns leads nobody has touched in *N* days to the pool — never one with a
+  scheduled follow-up still ahead of it.
+- Tops each agent back up to their target queue size, best leads first.
+
+All of it is configured in **Settings → Calling**, and all of it is off by
+default except the day-end roll-up.
+
+---
+
+## Running a team
+
+The admin app binds to localhost by default, which is right for one person on
+one machine. For a team, turn on **Team → Let my team connect**: the server
+rebinds to the network on a fixed port and the menu gives you the address to
+read out to your agents. They enter it once when they first open Lumen Agent.
+
+Only do that on a network you trust. Anything that can reach the machine can
+reach the sign-in page — an account you created is still required to see
+anything, but the login form itself becomes reachable.
+
+Larger teams should deploy the web app somewhere reachable instead and point the
+agent installers at that hostname.
 
 ---
 
@@ -317,6 +417,7 @@ be expensive:
 ```
 prisma/schema.prisma     data model
 electron/                desktop main process: DB lifecycle, servers, updater
+  agent-main.ts          the agent app — a thin client, no database of its own
 scripts/                 worker, seed, desktop build, verification scripts
 src/app/                 routes (App Router) and API handlers
 src/server/
@@ -328,7 +429,10 @@ src/server/
   filters/               filter DSL and its Prisma compiler
   export/                column registry, CSV and XLSX writers
   leads/                 queries, tab counts, contact enrichment
+  crm/                   outcomes, assignment, calls, shifts, reports, upkeep
 src/components/          UI, data table, filter builder, charts
+  crm/                   assignment, reports, live floor, click-to-copy
+  agent/                 agent shell, queue, call workspace
 tests/                   unit tests for the logic above
 docs/ARCHITECTURE.md     full architecture write-up
 docs/DESKTOP.md          desktop build and release guide
@@ -359,3 +463,5 @@ becomes an internal entity.
 | `npm run desktop:start` | Run the desktop app locally |
 | `npm run desktop:dist` | Build the Windows installer |
 | `npm run desktop:publish` | Build and upload to GitHub Releases |
+| `npm run agent:dist` | Build the Lumen Agent installer |
+| `npm run agent:publish` | Build and upload the agent installer |

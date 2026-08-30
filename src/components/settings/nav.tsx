@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { KeyRound, Plug, Scale, SlidersHorizontal, Building2 } from 'lucide-react'
+import { KeyRound, Plug, Scale, SlidersHorizontal, Building2, PhoneCall, UserCog } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
@@ -10,7 +10,9 @@ const ITEMS = [
   { href: '/settings/integrations', label: 'Integrations', icon: Plug },
   { href: '/settings/scoring', label: 'Scoring', icon: Scale },
   { href: '/settings/audit-rules', label: 'Audit rules', icon: SlidersHorizontal },
+  { href: '/settings/calling', label: 'Calling', icon: PhoneCall },
   { href: '/settings/workspace', label: 'Workspace', icon: Building2 },
+  { href: '/settings/profile', label: 'My profile', icon: UserCog },
 ]
 
 export function SettingsNav() {

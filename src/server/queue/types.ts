@@ -17,6 +17,11 @@ export interface JobPayloads {
   }
   'export.run': { exportJobId: string; workspaceId: string }
   'import.run': { importJobId: string; workspaceId: string }
+  /**
+   * Unattended CRM upkeep: day-end reports, abandoned shifts, stale-lead
+   * reclaim and auto-assignment. Idempotent, so a missed tick costs nothing.
+   */
+  'crm.maintenance': { workspaceId: string; force?: boolean }
 }
 
 export type JobName = keyof JobPayloads
@@ -28,6 +33,9 @@ export const QUEUE_FOR: Record<JobName, string> = {
   // Imports are IO-light but resolve every row against existing leads; they
   // share the export queue rather than competing with audits for workers.
   'import.run': 'export',
+  // Its own queue: upkeep must not sit behind a long audit, and an audit
+  // must not sit behind upkeep.
+  'crm.maintenance': 'crm',
 }
 
 export interface EnqueueOptions {

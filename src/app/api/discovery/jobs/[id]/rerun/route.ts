@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/server/db/client'
-import { requireApiAuth } from '@/server/auth/guard'
+import { requireApiAuth, requireRole } from '@/server/auth/guard'
 import { getQueue } from '@/server/queue'
 import { errorResponse } from '@/app/api/_lib/handler'
 
@@ -16,6 +16,8 @@ export async function POST(
 ) {
   try {
     const auth = await requireApiAuth()
+    // Re-running a discovery spends provider quota — not an agent action.
+    requireRole(auth, 'MEMBER')
     const { id } = await params
 
     const source = await prisma.discoveryJob.findFirst({

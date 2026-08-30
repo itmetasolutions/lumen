@@ -1,0 +1,75 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.lumen.agent",
+  "productName": "Lumen Agent",
+  "copyright": "Copyright © 2026",
+  "directories": {
+    "output": "release-agent",
+    "buildResources": "build"
+  },
+  "extraMetadata": {
+    "main": "dist-electron/agent-main.js",
+    "name": "lumen-agent",
+    "productName": "Lumen Agent"
+  },
+  "files": [
+    "!node_modules/**/*",
+    "package.json",
+    "dist-electron/agent-main.js",
+    "dist-electron/agent-config.js",
+    "dist-electron/agent-setup-preload.js",
+    "dist-electron/agent-setup.html",
+    "dist-electron/updater.js",
+    "dist-electron/log.js",
+    "dist-electron/paths.js",
+    "node_modules/argparse/**/*",
+    "node_modules/builder-util-runtime/**/*",
+    "node_modules/debug/**/*",
+    "node_modules/electron-updater/**/*",
+    "node_modules/fs-extra/**/*",
+    "node_modules/graceful-fs/**/*",
+    "node_modules/js-yaml/**/*",
+    "node_modules/jsonfile/**/*",
+    "node_modules/lazy-val/**/*",
+    "node_modules/lodash.escaperegexp/**/*",
+    "node_modules/lodash.isequal/**/*",
+    "node_modules/ms/**/*",
+    "node_modules/sax/**/*",
+    "node_modules/semver/**/*",
+    "node_modules/tiny-typed-emitter/**/*",
+    "node_modules/universalify/**/*",
+    "!node_modules/*/**/*.map",
+    "!node_modules/*/**/*.md",
+    "!node_modules/*/**/{test,tests,__tests__,example,examples}/**"
+  ],
+  "asar": true,
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "Lumen-Agent-Setup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Lumen Agent",
+    "deleteAppDataOnUninstall": false
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "itmetasolutions",
+      "repo": "lumen",
+      "releaseType": "release",
+      "channel": "agent"
+    }
+  ]
+}

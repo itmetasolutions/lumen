@@ -16,6 +16,10 @@ import { OutreachPanel } from '@/components/business/outreach-panel'
 import { IssueList } from '@/components/business/issue-list'
 import { ScoreHistory } from '@/components/business/score-history'
 import { SalesSummary } from '@/components/business/sales-summary'
+import { AssignmentPanel, CallHistoryCard } from '@/components/crm/assignment-panel'
+import { CopyValue, PhoneValue } from '@/components/crm/copy-value'
+import { assignableAgents } from '@/server/crm/assignment'
+import { OUTCOMES } from '@/server/crm/outcomes'
 import { SOURCE_LABELS } from '@/components/data-table/columns'
 import {
   NOT_FOUND, display, formatBytes, formatDateTime, formatMs,
@@ -50,9 +54,12 @@ export default async function BusinessPage({
   const { id } = await params
   const auth = await requireAuth()
 
-  const [business, history] = await Promise.all([
+  const canAssign = auth.role === 'OWNER' || auth.role === 'ADMIN'
+
+  const [business, history, agents] = await Promise.all([
     getBusinessProfile(auth.workspaceId, id),
     auditHistory(auth.workspaceId, id),
+    canAssign ? assignableAgents(auth.workspaceId) : Promise.resolve([]),
   ])
   if (!business) notFound()
 
@@ -390,7 +397,7 @@ export default async function BusinessPage({
                 ) : (
                   phones.map((p) => (
                     <div key={p.id} className="flex items-center justify-between gap-2">
-                      <a href={`tel:${p.value}`} className="tnum hover:text-accent">{p.value}</a>
+                      <PhoneValue phone={p.value} size="sm" />
                       <Badge tone="outline">{SOURCE_LABELS[p.provider] ?? p.provider}</Badge>
                     </div>
                   ))
@@ -402,8 +409,8 @@ export default async function BusinessPage({
                   <Missing />
                 ) : (
                   emails.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between gap-2">
-                      <a href={`mailto:${e.value}`} className="truncate hover:text-accent">{e.value}</a>
+                    <div key={e.id} className="flex min-w-0 items-center justify-between gap-2">
+                      <CopyValue value={e.value} className="min-w-0" />
                       <Badge tone="outline">{SOURCE_LABELS[e.provider] ?? e.provider}</Badge>
                     </div>
                   ))
@@ -544,6 +551,40 @@ export default async function BusinessPage({
               </div>
             </Card>
           )}
+
+          {canAssign && (
+            <AssignmentPanel
+              businessId={business.id}
+              agents={agents.map((a) => ({
+                id: a.id,
+                name: a.name,
+                role: a.role,
+                openLeads: a.openLeads,
+              }))}
+              assignedTo={business.assignedTo}
+              assignedAt={business.assignedAt?.toISOString() ?? null}
+              doNotCall={
+                business.lastCallOutcome === 'DO_NOT_CALL' ||
+                business.outreach?.stage === 'DO_NOT_CONTACT'
+              }
+              callCount={business.callCount}
+              nextFollowUpAt={business.nextFollowUpAt?.toISOString() ?? null}
+            />
+          )}
+
+          <CallHistoryCard
+            calls={business.callLogs.map((c) => ({
+              id: c.id,
+              outcome: c.outcome,
+              contactReached: c.contactReached,
+              notes: c.notes,
+              durationSec: c.durationSec,
+              followUpAt: c.followUpAt?.toISOString() ?? null,
+              createdAt: c.createdAt.toISOString(),
+              by: c.user.name ?? c.user.email,
+            }))}
+            outcomes={OUTCOMES.map((o) => ({ value: o.value, label: o.label, tone: o.tone }))}
+          />
 
           <ScoreHistory history={history.map(serializeHistory)} />
 
