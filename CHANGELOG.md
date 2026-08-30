@@ -1,5 +1,227 @@
 # Changelog
 
+## v0.2.0 — the calling half
+
+v0.1.0 found leads and told you which were worth calling. This release covers
+what happens next: assigning them, calling them, and reporting on the work.
+
+Lumen is now **two applications** over one database. The app you already have
+becomes the supervisor's: it finds leads and hands them out. A second, much
+smaller app — **Lumen Agent** — goes on each caller's machine and shows them
+their queue and nothing else.
+
+If you work alone, nothing changes. The new sections stay out of your way and
+you can ignore the second app entirely.
+
+### Install
+
+**[Lumen-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)** — the main app. Update over your existing install; your database is untouched.
+
+**[Lumen-Agent-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Agent-Setup.exe)** — for your callers. 97 MB, no database of its own.
+
+Windows will show **"Windows protected your PC"** on both, because neither is
+code-signed yet. Click **More info → Run anyway** — worth warning your agents
+before they hit it.
+
+Existing installs update themselves. The two apps read separate update feeds, so
+an agent is never offered the main build by mistake.
+
+---
+
+## Cold calling
+
+### Your team
+
+**Team** is where accounts come from, and the only place. There is no sign-up
+page into your workspace — if someone can see your leads, you put them there.
+Creating an account produces a temporary password shown **once**; the agent is
+made to replace it the first time they sign in.
+
+People are *disabled*, never deleted. Their call history is what the reports are
+built from, and deleting the account would take a month of records with it.
+Disabling someone returns their leads to the pool the same minute.
+
+### Handing out work
+
+Assign leads one at a time from a lead's page, in bulk from any filtered view,
+or automatically. Assigning "everything matching this filter" resolves through
+the same compiler the table uses, so it means exactly what is on your screen —
+the same guarantee the export has always made.
+
+A business that has asked not to be contacted is never assigned to anyone, by
+any route, including the automatic ones.
+
+### The live floor
+
+Who is online, who is on shift, which lead each agent has open right now, calls
+and contact rate so far today, and a running feed of outcomes as they land.
+Refreshes every five seconds and pauses when you switch tabs.
+
+### Reports
+
+A report per agent per day, written once and stored — so a number you read on
+Tuesday still says the same thing on Friday. Days close themselves in the
+evening, in your workspace's timezone, and there is a button if you want today's
+early.
+
+Contact rate and calls-per-hour show a dash rather than a zero when there is
+nothing to divide by. An agent who made no calls had no contact rate; reporting
+0% would read as a terrible day rather than an empty one.
+
+### What an agent sees
+
+A queue, not a database. The order is the calling strategy and is not
+adjustable: follow-ups you have already missed, then ones due today, then leads
+never called ranked by lead score, then everything worked but unscheduled.
+
+**Clock in and out.** Shift time and active time are tracked separately — the
+first is clock-in to clock-out, the second only accrues while the app is
+actually being used. A laptop left open overnight adds no work, and active time
+can never exceed the shift it happened in.
+
+**One screen per call:** the number, the business, what is worth talking about,
+eleven outcomes, notes, and a follow-up date that is *mandatory* for any outcome
+that promises one. You cannot save "callback requested" without saying when.
+
+Call records cannot be edited or deleted. A mistake is corrected by logging
+another call with a note, the way a ledger is corrected — by a new entry, not an
+erasure. That is what makes the reports worth reading.
+
+Agents cannot run discovery, export, import, or see anyone else's leads. Those
+are refusals at the server, not hidden buttons, and an agent can only log calls
+against leads actually assigned to them.
+
+### Things that happen on their own
+
+The background worker checks every five minutes and decides what is due, so a
+computer that was off for a day catches up rather than losing it:
+
+- Writes each day up into reports after your chosen hour.
+- Fills in yesterday's reports if nothing was running when the day ended.
+- Closes shifts people forgot to clock out of — ending them at the last activity
+  recorded, not at whatever time you noticed.
+- Returns leads nobody has touched in *N* days to the pool, never one with a
+  follow-up still ahead of it.
+- Tops each agent back up to their target queue size, best leads first.
+
+All of it lives in **Settings → Calling**, and all of it is off by default except
+the end-of-day write-up.
+
+### Letting your team connect
+
+The main app talks only to your own computer by default. **Team → Let my team
+connect** opens it to your network on a fixed port and restarts; **Team → Show
+address for agents…** gives you the address to read out. Your agents type it
+once when they first open Lumen Agent.
+
+Only do this on a network you trust. Anything that can reach your computer can
+reach the sign-in page — an account you created is still needed to see anything,
+but the login form itself becomes reachable.
+
+---
+
+## Also new since v0.1.0
+
+### Import leads from another Lumen
+
+Upload a CSV or XLSX exported from another workspace. Every row runs through the
+same matching as discovery, so an overlapping file merges into your existing
+leads instead of creating a second copy of every business.
+
+Audit results are deliberately left behind. Lead score, SEO health and
+opportunity flags describe an audit that ran somewhere else; carrying them across
+would show you another installation's measurements as your own. The importer
+lists which columns it ignored and why.
+
+### Audit everything unaudited, in one action
+
+Queues audits for every business that has never been audited, respecting your
+current filter and tab. It tells you the real numbers before you commit — how
+many match, how many actually have a website — because several hundred audits is
+hours of crawling. Clicking twice cannot double-queue the same work.
+
+Audit status is now a filter field too, which is how you find the unaudited set
+in the first place.
+
+### Find missing details, without spending search quota
+
+For any single business: derives likely domains from its name, accepts one only
+when the live page proves it belongs to that business, crawls the confirmed site,
+reads its structured data, and matches Yelp Fusion. A newly found website is
+queued for audit automatically. Every step reports what it found — including
+where it looked when it found nothing.
+
+### Yelp Fusion
+
+A first-class discovery source with its own free tier, separate from the SerpApi
+quota. It returns the website URL and price range the SerpApi Yelp engine leaves
+empty.
+
+---
+
+## Fixes
+
+- **Days were an hour wrong twice a year.** The reporting day resolved its
+  timezone offset once and reused it for both ends, so on the mornings the clocks
+  change an hour of calls was filed under the wrong day.
+- **Phone numbers were corrupted by an export/import round trip.** The CSV writer
+  prefixes cells starting with `=` `+` `-` `@` so a spreadsheet cannot execute
+  them — and every international phone number starts with `+`. Importing stored
+  `'+441612345678`. The guard is now reversed on the way in, and only when the
+  next character was actually one that got guarded, so a name genuinely starting
+  with an apostrophe survives.
+- **A targeted re-audit could erase other scores.** Re-running only the UX stage
+  cleared the SEO health of a business and dropped it out of the SEO tab. Each
+  audit domain now keeps its own last known result.
+- **Discovery made one database round trip per audit.** A run finding 500
+  businesses made 500 separate calls to queue their audits; it is one now.
+
+---
+
+## Your data
+
+Everything still stays on your machine, in `%APPDATA%\lumen\` — database,
+screenshots and exports. Lumen Agent stores only the address of your server, in
+`%APPDATA%\Lumen Agent\`.
+
+Upgrading updates the database in place and keeps everything. Uninstalling does
+not delete your data.
+
+## Known limitations
+
+- **Neither app is code-signed**, so SmartScreen warns on install.
+- **Windows only.** macOS and Linux need only a build target and the matching
+  Postgres package.
+- **~700 MB on disk** for the main app; ~350 MB for Lumen Agent.
+- **Agents connect over your own network.** There is no hosted option — for
+  people working from home you would deploy the web app somewhere reachable and
+  point their installers at it.
+- **The map is a spatial plot, not a street map.** It renders offline with no
+  third-party requests; there are no map tiles behind the points.
+- **Google Sheets export** is not implemented; exports are CSV and XLSX.
+- **No dialler integration.** Numbers are one click to copy, and open in whatever
+  your machine handles `tel:` links with. Lumen does not place calls.
+- **Scheduled re-auditing** is still manual. The re-check queue surfaces stale
+  records; you start the re-audits.
+
+## Compliance
+
+Unchanged: official provider APIs and permitted public sources only. The crawler
+identifies itself, honours robots.txt and rate-limits per host. No CAPTCHA
+solving or bot-protection evasion. Contact details are collected only where a
+business publishes them publicly.
+
+Lumen still sends nothing on your behalf. It records what your team did after
+they called; it does not call, email or message anyone.
+
+## Requirements
+
+Windows 10 or 11, 64-bit, for both apps. The main app wants Microsoft Edge or
+Google Chrome present for UX audits and screenshots — optional for everything
+else. Lumen Agent needs a network route to your Lumen and nothing more.
+
+---
+
 ## v0.1.0 — first release
 
 Lumen finds local businesses, audits their websites with reproducible evidence,
