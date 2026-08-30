@@ -167,6 +167,34 @@ npm run agent:publish
 Run them in either order — they write different filenames, so neither
 overwrites the other's assets. Publish the draft release once, afterwards.
 
+### Releasing from GitHub instead
+
+`.github/workflows/release.yml` does all of the above on GitHub's own Windows
+runner. Nothing is built locally and there is no personal access token to
+create — Actions issues a scoped one for the job.
+
+```bash
+# bump the version first, then:
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Or **Actions → Release → Run workflow** and type the version.
+
+The job type-checks, runs the tests, refuses to continue if `package.json`
+disagrees with the tag, then builds and uploads both installers to a **draft**
+release. Open it, paste the notes from `CHANGELOG.md`, and press Publish.
+
+Two things it needs that are easy to miss if you adapt it:
+
+- **`npx prisma generate` before the type check.** There is no postinstall hook,
+  so a fresh `npm ci` has no generated client, and both the type check and the
+  tests import it.
+- **A syntactically valid `DATABASE_URL`.** `next build` constructs a Prisma
+  client even though every page that reads the database is dynamic and nothing
+  connects. The workflow sets one pointing at localhost; it is not a secret and
+  nothing resolves it.
+
 ---
 
 ## How updating works

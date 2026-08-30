@@ -1,0 +1,111 @@
+name: Release
+
+# Builds both Windows installers on GitHub's own Windows runner and attaches
+# them to a draft release. Nothing is built on your machine and no personal
+# access token is involved — Actions issues its own scoped token for the job.
+#
+# Two ways to start it:
+#   - push a tag: git tag v0.2.0 && git push origin v0.2.0
+#   - or Actions → Release → Run workflow, and type the version
+#
+# The release is left as a DRAFT so you can read the notes and check the assets
+# before anyone's app sees it. The updater ignores drafts, so nothing reaches
+# an installed copy until you press Publish.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (e.g. 0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  # The only write this job needs: creating the release and uploading to it.
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      # next build imports the server modules, which construct a Prisma client.
+      # It never opens a connection — every page that reads the database is
+      # dynamic — but the URL still has to parse. This one points nowhere on
+      # purpose and is not a secret.
+      DATABASE_URL: postgresql://lumen:lumen@127.0.0.1:5432/lumen?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://lumen:lumen@127.0.0.1:5432/lumen?schema=public
+      # Each installed copy generates its own on first run; this only satisfies
+      # the build and is never shipped.
+      AUTH_SECRET: build-time-placeholder-not-used-at-runtime
+      # electron-builder picks this up for the release it creates.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # There is no postinstall hook, so a fresh checkout has no generated
+      # Prisma client — and both the type check and the tests import it. The
+      # build would regenerate it later, but only after those two steps have
+      # already failed.
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      # Catches a broken build before spending twenty minutes packaging one.
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Fails loudly rather than shipping a release whose feeds claim the old
+      # version — the updater compares versions, so a stale number means no
+      # installed copy would ever offer the update.
+      - name: Check package.json matches the tag
+        shell: pwsh
+        run: |
+          $expected = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}'.TrimStart('v')
+          }
+          $actual = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Host "tag=$expected  package.json=$actual"
+          if ($expected -ne $actual) {
+            Write-Error "package.json is $actual but the release is $expected. Bump the version, commit, and tag again."
+            exit 1
+          }
+
+      # ── The main app ────────────────────────────────────────────────────
+      # desktop:publish runs the Next build, bundles the worker, compiles the
+      # Electron layer, packages, and uploads. It writes latest.yml.
+      - name: Build and upload Lumen
+        run: npm run desktop:publish
+
+      # ── The agent app ───────────────────────────────────────────────────
+      # Reuses the Electron compile from the step above and writes agent.yml,
+      # so the two apps' update feeds stay separate inside one release.
+      - name: Build and upload Lumen Agent
+        run: npm run agent:publish
+
+      - name: What landed
+        shell: pwsh
+        run: |
+          Write-Host 'Assets built:'
+          Get-ChildItem release, release-agent -Filter *.exe -ErrorAction SilentlyContinue |
+            ForEach-Object { '  {0}  {1:N0} MB' -f $_.Name, ($_.Length / 1MB) }
+          Write-Host ''
+          Write-Host 'The release is a DRAFT. Open it, paste the notes from CHANGELOG.md,'
+          Write-Host 'confirm all six assets are attached, then press Publish release.'
