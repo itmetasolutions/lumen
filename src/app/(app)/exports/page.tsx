@@ -3,6 +3,7 @@ import { Download, FileDown } from 'lucide-react'
 import { requireAuth } from '@/server/auth/guard'
 import { prisma } from '@/server/db/client'
 import { Badge, Button, Card, EmptyState } from '@/components/ui/primitives'
+import { ImportPanel } from '@/components/import/import-panel'
 import { formatBytes, formatDateTime, formatNumber } from '@/lib/utils'
 
 export const metadata = { title: 'Exports' }
@@ -20,11 +21,15 @@ export default async function ExportsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-semibold tracking-tight">Exports</h1>
-        <p className="mt-1 text-[13px] text-muted">
-          Files are generated server-side and served only to members of this workspace.
-        </p>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Exports &amp; imports</h1>
+          <p className="mt-1 text-[13px] text-muted">
+            Files are generated server-side and served only to members of this
+            workspace. Imports merge into your existing leads rather than duplicating them.
+          </p>
+        </div>
+        <ImportPanel />
       </div>
 
       {jobs.length === 0 ? (

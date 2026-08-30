@@ -16,6 +16,7 @@ export interface JobPayloads {
     scopes?: Array<'crawl' | 'technical' | 'seo' | 'performance' | 'ux'>
   }
   'export.run': { exportJobId: string; workspaceId: string }
+  'import.run': { importJobId: string; workspaceId: string }
 }
 
 export type JobName = keyof JobPayloads
@@ -24,6 +25,9 @@ export const QUEUE_FOR: Record<JobName, string> = {
   'discovery.run': 'discovery',
   'audit.site': 'audit',
   'export.run': 'export',
+  // Imports are IO-light but resolve every row against existing leads; they
+  // share the export queue rather than competing with audits for workers.
+  'import.run': 'export',
 }
 
 export interface EnqueueOptions {

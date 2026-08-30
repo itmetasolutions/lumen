@@ -173,6 +173,10 @@ qualifies for.
   quota**, and reports where it looked when it finds nothing.
 - **Export** to CSV or XLSX: everything, exactly the current filter, or just the
   rows you ticked, choosing from 51 available fields.
+- **Import** a CSV or XLSX exported from another Lumen workspace. Rows run
+  through the same entity resolution as discovery, so an overlapping file merges
+  instead of duplicating. Audit results are deliberately left behind — they
+  describe an audit that ran elsewhere, and this workspace computes its own.
 
 Clicking a business opens the full profile: contact and provenance, website
 status, every audit finding with its evidence, mobile and desktop performance,
@@ -289,7 +293,7 @@ npm test
 npm run typecheck
 ```
 
-**184 tests across 10 suites**, covering the logic where a silent regression would
+**203 tests across 11 suites**, covering the logic where a silent regression would
 be expensive:
 
 | Suite | Covers |
@@ -303,6 +307,7 @@ be expensive:
 | `contact-enrichment` | Contact extraction, including the rules against guessing |
 | `audit-merge` | Targeted re-audits preserving domains they did not measure |
 | `enrichment-sources` | Domain candidate generation and schema.org extraction |
+| `import` | CSV parsing, header mapping and export→import round-trip fidelity |
 | `ssrf` | Every private and reserved range the crawler must refuse |
 
 ---

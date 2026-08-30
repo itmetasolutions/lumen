@@ -16,6 +16,7 @@ async function main() {
   const { runDiscovery } = await import('../src/server/discovery/run')
   const { runAudit } = await import('../src/server/audit/run')
   const { runExportJob } = await import('../src/server/export/run')
+  const { runImport } = await import('../src/server/import/run')
   const { env } = await import('../src/server/env')
 
   const requested = process.argv
@@ -31,6 +32,7 @@ async function main() {
     'discovery.run': runDiscovery,
     'audit.site': runAudit,
     'export.run': runExportJob,
+    'import.run': runImport,
   } as const
 
   const plan: Array<{ name: string; concurrency: number }> = [

@@ -38,6 +38,7 @@ model User {
   auditLogs    AuditLog[]
   assignedLeads OutreachStatus[] @relation("AssignedUser")
   exportJobs   ExportJob[]
+  importJobs   ImportJob[]
   discoveryJobs DiscoveryJob[]
   savedViews   SavedView[]
 }
@@ -64,6 +65,7 @@ model Workspace {
   discoveryJobs   DiscoveryJob[]
   savedViews      SavedView[]
   exportJobs      ExportJob[]
+  importJobs      ImportJob[]
   credentials     ApiCredential[]
   scoringProfiles ScoringProfile[]
   auditLogs       AuditLog[]
@@ -907,6 +909,35 @@ model ExportJob {
   bytes     Int?
   error     String?
   createdAt DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([workspaceId, createdAt])
+}
+
+model ImportJob {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  fileName String
+  filePath String
+  format   ExportFormat
+  bytes    Int?
+
+  state         JobState @default(PENDING)
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  createdCount  Int      @default(0)
+  mergedCount   Int      @default(0)
+  skippedCount  Int      @default(0)
+  errorCount    Int      @default(0)
+  /// [{ row, reason }] — capped, so one bad file cannot bloat the record.
+  errors        Json     @default("[]")
+  error         String?
+
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
 
   @@index([workspaceId, createdAt])
