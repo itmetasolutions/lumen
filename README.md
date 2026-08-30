@@ -104,7 +104,8 @@ progress page says so rather than spinning.
 | Website crawl + technical audit | **Yes** | Built-in fetcher with SSRF protection and robots compliance. |
 | SEO audit | **Yes** | Deterministic rules over the crawled DOM. |
 | UX audit + screenshots | **Yes**, with a browser | Drives installed Edge/Chrome via `playwright-core`. Set `PLAYWRIGHT_CHANNEL`. |
-| Contact enrichment | **Yes** | Crawls the business's own site for missing phone, email and socials. |
+| Contact enrichment | **Yes** | Crawls the business's own site for phone, email, socials and schema.org data. |
+| Finding a missing website | **Yes** | Verifies candidate domains against the live page. No search API. |
 | Performance | **Yes**, low volume | PageSpeed Insights permits unkeyed calls at a strict daily quota. |
 | Google Places discovery | No | Needs a Google Places key. |
 | SerpApi discovery | No | One key enables the Google Maps, Yelp and Yandex engines. |
@@ -126,6 +127,7 @@ shown. It is never silently swapped for another, and never faked.
 |---|---|---|
 | **OpenStreetMap** | none | Addresses, websites, phones, emails. No ratings. |
 | **Google Places** | `GOOGLE_MAPS_API_KEY` | Ratings, review counts, phones, websites, opening status. |
+| **Yelp Fusion** | free Yelp key | Yelp listings with website URL and price range. 500 calls/day free, separate from the SerpApi quota. |
 | **SerpApi — Google Maps** | SerpApi key | Local listings with ratings and reviews. |
 | **SerpApi — Yelp** | same key | Yelp listings, categories, ratings, price range. |
 | **SerpApi — Yandex** | same key | Finds business websites local APIs miss. |
@@ -162,6 +164,10 @@ qualifies for.
 - **Saved views** remember tab, filters, sort, columns and date range together.
 - **Search** across name, domain, phone, email and address.
 - **Bulk actions** — enrich missing contacts, delete leads with no contact route.
+- **Find missing details** on any business — derives likely domains from the
+  name and verifies each against the live page, crawls the confirmed site,
+  reads its schema.org data, and matches Yelp Fusion. Uses **no paid search
+  quota**, and reports where it looked when it finds nothing.
 - **Export** to CSV or XLSX: everything, exactly the current filter, or just the
   rows you ticked, choosing from 51 available fields.
 
@@ -280,7 +286,7 @@ npm test
 npm run typecheck
 ```
 
-**165 tests across 9 suites**, covering the logic where a silent regression would
+**180 tests across 10 suites**, covering the logic where a silent regression would
 be expensive:
 
 | Suite | Covers |
@@ -293,6 +299,7 @@ be expensive:
 | `discovery` | Term expansion, geographic tiling, provider normalisation |
 | `contact-enrichment` | Contact extraction, including the rules against guessing |
 | `audit-merge` | Targeted re-audits preserving domains they did not measure |
+| `enrichment-sources` | Domain candidate generation and schema.org extraction |
 | `ssrf` | Every private and reserved range the crawler must refuse |
 
 ---

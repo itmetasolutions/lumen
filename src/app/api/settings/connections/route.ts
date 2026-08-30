@@ -108,6 +108,10 @@ async function probeConnections(workspaceId: string): Promise<
     state: 'NOT_CONFIGURED' as const,
     detail: 'SerpApi search provider is not registered.',
   }
+  const yelpFusion = discovery.find((p) => p.id === 'yelp-fusion')?.status ?? {
+    state: 'NOT_CONFIGURED' as const,
+    detail: 'Yelp Fusion provider is not registered.',
+  }
   const pagespeed = performance.find((p) => p.id === 'pagespeed')?.status ?? {
     state: 'NOT_CONFIGURED' as const,
     detail: 'PageSpeed provider is not registered.',
@@ -116,6 +120,7 @@ async function probeConnections(workspaceId: string): Promise<
   return {
     'google-places': google,
     search,
+    'yelp-fusion': yelpFusion,
     pagespeed,
     openai: { state: ai.state, detail: ai.detail },
     s3,

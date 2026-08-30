@@ -3,6 +3,7 @@ import type { DiscoveryProvider, ProviderStatus } from '../types'
 import { GooglePlacesProvider } from './google-places'
 import { OpenStreetMapProvider } from './openstreetmap'
 import { SearchProvider, SerpApiYelpProvider, SerpApiYandexProvider } from './search'
+import { YelpFusionProvider } from './yelp-fusion'
 
 /**
  * The provider registry (§5, §21).
@@ -14,6 +15,7 @@ const REGISTRY: DiscoveryProvider[] = [
   new GooglePlacesProvider(),
   new OpenStreetMapProvider(),
   new SearchProvider(),
+  new YelpFusionProvider(),
   new SerpApiYelpProvider(),
   new SerpApiYandexProvider(),
 ]

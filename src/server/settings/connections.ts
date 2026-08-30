@@ -12,6 +12,7 @@ export const CONNECTION_PROVIDER_IDS = [
   'google-places',
   'pagespeed',
   'search',
+  'yelp-fusion',
   'openai',
   's3',
 ] as const
@@ -147,6 +148,32 @@ export const CONNECTION_DEFINITIONS: ConnectionDefinition[] = [
         type: 'text',
         placeholder: '84',
         description: 'Optional SerpApi lr value for Yandex regional targeting.',
+      },
+    ],
+  },
+  {
+    id: 'yelp-fusion',
+    label: 'Yelp Fusion API',
+    category: 'Discovery',
+    description:
+      "Yelp's official API. Free tier allows 500 calls/day. Returns website URLs and price range, which the SerpApi Yelp engine does not, and does not consume the SerpApi quota.",
+    fields: [
+      {
+        key: 'apiKey',
+        label: 'API key',
+        type: 'secret',
+        required: true,
+        placeholder: 'Yelp Fusion API key',
+        description: 'Create one at https://www.yelp.com/developers/v3/manage_app',
+      },
+      {
+        key: 'dailyLimit',
+        label: 'Daily call limit',
+        type: 'text',
+        required: true,
+        defaultValue: '500',
+        placeholder: '500',
+        description: "Local cap matching Yelp's free-tier allowance. Set 0 to rely on Yelp's own limit.",
       },
     ],
   },
@@ -543,6 +570,8 @@ function environmentSecrets(provider: ConnectionProviderId): Record<string, stri
       return compact({ apiKey: env.pagespeedApiKey })
     case 'search':
       return compact({ apiKey: env.searchProviderApiKey })
+    case 'yelp-fusion':
+      return compact({ apiKey: env.yelpFusionApiKey })
     case 'openai':
       return compact({ apiKey: env.openaiApiKey })
     case 's3':

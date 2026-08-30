@@ -33,6 +33,7 @@ export const env = {
   pagespeedApiKey: str('GOOGLE_PAGESPEED_API_KEY'),
   searchProviderApiKey: str('SEARCH_PROVIDER_API_KEY'),
   searchProviderKind: str('SEARCH_PROVIDER_KIND', 'serpapi')!,
+  yelpFusionApiKey: str('YELP_FUSION_API_KEY'),
   overpassEndpoint: str('OVERPASS_ENDPOINT', 'https://overpass-api.de/api/interpreter')!,
 
   openaiApiKey: str('OPENAI_API_KEY'),

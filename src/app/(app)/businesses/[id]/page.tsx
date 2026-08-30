@@ -11,6 +11,7 @@ import {
   Badge, Card, CardHeader, EmptyState, ScorePill, SeverityBadge,
 } from '@/components/ui/primitives'
 import { ReauditPanel } from '@/components/business/reaudit-panel'
+import { DeepEnrichPanel } from '@/components/business/deep-enrich-panel'
 import { OutreachPanel } from '@/components/business/outreach-panel'
 import { IssueList } from '@/components/business/issue-list'
 import { ScoreHistory } from '@/components/business/score-history'
@@ -99,6 +100,16 @@ export default async function BusinessPage({
           <Link href="/leads/all">
             <span className="text-[13px] text-muted hover:text-fg">← Back to leads</span>
           </Link>
+          <DeepEnrichPanel
+            businessId={business.id}
+            missing={[
+              !business.websiteUrl && 'website',
+              !business.primaryPhone && 'phone',
+              !business.primaryEmail && 'email',
+              !business.hasSocial && 'social',
+              !business.addressLine && 'address',
+            ].filter((m): m is string => typeof m === 'string')}
+          />
           <ReauditPanel businessId={business.id} hasWebsite={Boolean(business.websiteUrl)} />
         </div>
       </div>

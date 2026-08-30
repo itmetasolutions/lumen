@@ -31,7 +31,7 @@ export interface EnrichmentContact {
   value: string
   normalized: string
   label: string | null
-  sourceUrl: string
+  sourceUrl: string | null
   confidence: number
 }
 
