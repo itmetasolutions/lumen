@@ -44,33 +44,32 @@ Next server and Chromium-driving dependencies.
 
 ---
 
-## Before your first release
+## Releasing
 
-**1. Set your GitHub repository** in `package.json` → `build.publish`:
+The update feed is configured and the code is on GitHub:
 
-```json
-"publish": [{ "provider": "github", "owner": "your-username", "repo": "lumen" }]
-```
+- repository — `itmetasolutions/lumen`, branch `main`
+- `package.json` → `build.publish` → `{ provider: github, owner: itmetasolutions, repo: lumen }`
 
-`owner` currently reads `CHANGE_ME`. Auto-update will not work until this is
-correct — it is baked into `app-update.yml` inside the installer.
+That value is baked into `app-update.yml` inside the installer, which is how an
+installed copy knows where to look for new versions.
 
-**2. Create the repo and push.** The project has a local git repo but no commit
-and no remote:
-
-```bash
-git add -A && git commit -m "Initial commit" && git remote add origin https://github.com/your-username/lumen.git && git push -u origin main
-```
-
-**3. Publish a release:**
+To cut a release:
 
 ```bash
 set GH_TOKEN=your_personal_access_token && npm run desktop:publish
 ```
 
-The token needs `repo` scope. electron-builder creates a draft release, uploads
-the installer, `latest.yml` and the `.blockmap`. **Publish the draft** — the
-updater ignores drafts.
+The token needs `repo` scope ([create one here](https://github.com/settings/tokens)).
+electron-builder creates a **draft** release and uploads the installer,
+`latest.yml` and the `.blockmap`.
+
+**Publish the draft on GitHub afterwards — the updater ignores drafts.**
+
+If you would rather upload by hand, `npm run desktop:dist` produces the same
+three files in `release/`; attach all three to a GitHub release tagged
+`v<version>`. All three matter: `latest.yml` is the feed the updater reads, and
+the `.blockmap` is what makes later updates download only changed blocks.
 
 ---
 
