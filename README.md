@@ -158,12 +158,15 @@ Tabs **overlap by design**. `needsWebsite`, `needsRedesign`, `needsSeo` and
 qualifies for.
 
 - **Composable filters** — AND/OR trees over 55 fields: location, category,
-  rating, contact availability, every score, specific findings ("Missing H1",
+  rating, audit status, contact availability, every score, specific findings ("Missing H1",
   "No sitemap", "Broken mobile layout"), opportunity flags, dates, source and
   outreach stage.
 - **Saved views** remember tab, filters, sort, columns and date range together.
 - **Search** across name, domain, phone, email and address.
-- **Bulk actions** — enrich missing contacts, delete leads with no contact route.
+- **Bulk actions** — queue audits for everything unaudited, enrich missing
+  contacts, delete leads with no contact route. The audit action states how many
+  businesses it will process before you commit, and never double-queues work
+  already in flight.
 - **Find missing details** on any business — derives likely domains from the
   name and verifies each against the live page, crawls the confirmed site,
   reads its schema.org data, and matches Yelp Fusion. Uses **no paid search
@@ -286,7 +289,7 @@ npm test
 npm run typecheck
 ```
 
-**180 tests across 10 suites**, covering the logic where a silent regression would
+**184 tests across 10 suites**, covering the logic where a silent regression would
 be expensive:
 
 | Suite | Covers |

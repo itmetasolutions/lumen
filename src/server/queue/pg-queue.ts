@@ -56,6 +56,26 @@ export class PgQueue implements JobQueue {
     return job.id
   }
 
+  async enqueueMany<N extends JobName>(
+    name: N,
+    payloads: JobPayloads[N][],
+    opts: EnqueueOptions = {},
+  ): Promise<number> {
+    if (payloads.length === 0) return 0
+    const runAt = new Date(Date.now() + (opts.delayMs ?? 0))
+    const result = await prisma.queueJob.createMany({
+      data: payloads.map((payload) => ({
+        queue: QUEUE_FOR[name],
+        name,
+        payload: payload as object,
+        runAt,
+        maxAttempts: opts.maxAttempts ?? 3,
+        priority: opts.priority ?? 0,
+      })),
+    })
+    return result.count
+  }
+
   /**
    * Atomically claim one job. SKIP LOCKED means N workers never contend for the
    * same row, and the reclaim clause returns jobs whose worker died holding a lock.

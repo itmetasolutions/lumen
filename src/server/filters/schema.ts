@@ -73,6 +73,23 @@ export const FIELDS: FieldDef[] = [
       { value: 'CLOSED_PERMANENTLY', label: 'Permanently closed' },
     ],
   },
+  {
+    id: 'auditStatus',
+    label: 'Audit status',
+    group: 'Business',
+    kind: 'enum',
+    column: 'auditStatus',
+    operators: ['eq', 'neq', 'in'],
+    options: [
+      { value: 'NOT_AUDITED', label: 'Not audited' },
+      { value: 'QUEUED', label: 'Queued' },
+      { value: 'RUNNING', label: 'Running' },
+      { value: 'COMPLETED', label: 'Completed' },
+      { value: 'PARTIAL', label: 'Partial' },
+      { value: 'FAILED', label: 'Failed' },
+      { value: 'SKIPPED', label: 'Skipped' },
+    ],
+  },
   // ── Contact
   { id: 'hasPhone', label: 'Has phone', group: 'Contact', kind: 'boolean', column: 'hasPhone', operators: BOOL_OPS },
   { id: 'hasEmail', label: 'Has email', group: 'Contact', kind: 'boolean', column: 'hasEmail', operators: BOOL_OPS },

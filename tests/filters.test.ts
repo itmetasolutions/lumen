@@ -261,3 +261,38 @@ describe('export parity (§37)', () => {
     expect(json).not.toContain('London')
   })
 })
+
+describe('unaudited selection (§ bulk audit)', () => {
+  it('targets only businesses with no usable audit', async () => {
+    const { unauditedWhere } = await import('@/server/leads/audit-queue')
+    const json = JSON.stringify(unauditedWhere(WS, undefined, false))
+    expect(json).toContain('NOT_AUDITED')
+    // Work already in flight must not be queued a second time.
+    expect(json).not.toContain('QUEUED')
+    expect(json).not.toContain('RUNNING')
+  })
+
+  it('can include previously failed audits when asked', async () => {
+    const { unauditedWhere } = await import('@/server/leads/audit-queue')
+    const json = JSON.stringify(unauditedWhere(WS, undefined, true))
+    expect(json).toContain('FAILED')
+    expect(json).toContain('NOT_AUDITED')
+  })
+
+  it('stays inside the workspace', async () => {
+    const { unauditedWhere } = await import('@/server/leads/audit-queue')
+    expect(JSON.stringify(unauditedWhere(WS, undefined, false))).toContain(WS)
+  })
+
+  it('respects an active filter so "audit unaudited" follows the visible view', async () => {
+    const { unauditedWhere } = await import('@/server/leads/audit-queue')
+    const query = q({
+      tab: 'seo',
+      filters: { logic: 'AND', conditions: [{ field: 'city', op: 'eq', value: 'London' }] },
+    })
+    const json = JSON.stringify(unauditedWhere(WS, query, false))
+    expect(json).toContain('London')
+    expect(json).toContain('needsSeo')
+    expect(json).toContain('NOT_AUDITED')
+  })
+})

@@ -64,6 +64,15 @@ export interface JobQueue {
     payload: JobPayloads[N],
     opts?: EnqueueOptions,
   ): Promise<string>
+  /**
+   * Bulk enqueue. Fanning out hundreds of audits one call at a time is hundreds
+   * of round trips to the database; this collapses them into one insert.
+   */
+  enqueueMany<N extends JobName>(
+    name: N,
+    payloads: JobPayloads[N][],
+    opts?: EnqueueOptions,
+  ): Promise<number>
   /** Runs until `stop()` — used by the worker entrypoint. */
   work(
     queue: string,

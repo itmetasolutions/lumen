@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Search, SlidersHorizontal, Columns3, Download, Bookmark, RotateCw,
-  ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Database, X, Check,
+  ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Database, X, Check, ClipboardCheck,
   Trash2, Sparkles,
 } from 'lucide-react'
 import {
@@ -113,7 +113,7 @@ export function LeadsWorkspace({
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [selectAllMatching, setSelectAllMatching] = useState(false)
-  const [bulkAction, setBulkAction] = useState<'enrich' | 'delete-no-contact' | null>(null)
+  const [bulkAction, setBulkAction] = useState<'enrich' | 'delete-no-contact' | 'audit-missing' | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -277,6 +277,66 @@ export function LeadsWorkspace({
           remaining > 0 ? `${formatNumber(remaining)} still pending` : null,
           errorCount > 0 ? `${formatNumber(errorCount)} unreachable` : null,
         ].filter(Boolean).join(' | '),
+      )
+      await load()
+    } catch {
+      setActionError('Could not reach the server')
+    } finally {
+      setBulkAction(null)
+    }
+  }
+
+  async function auditMissing() {
+    setActionMessage(null)
+    setActionError(null)
+    setBulkAction('audit-missing')
+
+    try {
+      // Ask the server what this would do before committing to hours of crawling.
+      const preview = await fetch('/api/leads/audit-missing', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query, dryRun: true }),
+      })
+      const plan = await preview.json()
+      if (!preview.ok) {
+        setActionError(plan.error ?? 'Could not check for unaudited businesses')
+        return
+      }
+
+      if (plan.matched === 0) {
+        setActionMessage('Every business matching this view has already been audited.')
+        return
+      }
+
+      const capped = plan.capped ? ` Only the first ${formatNumber(plan.limit)} will be queued.` : ''
+      const ok = window.confirm(
+        `Queue audits for ${formatNumber(plan.matched)} business${plan.matched === 1 ? '' : 'es'}?
+
+` +
+          `${formatNumber(plan.withWebsite)} have a website and will be crawled and scored.
+` +
+          `${formatNumber(plan.withoutWebsite)} have no website and will be scored as website-creation leads.
+
+` +
+          `This runs in the background and can take a while.${capped}`,
+      )
+      if (!ok) return
+
+      const res = await fetch('/api/leads/audit-missing', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setActionError(json.error ?? 'Could not queue audits')
+        return
+      }
+
+      setActionMessage(
+        `Queued ${formatNumber(json.queued)} audit${json.queued === 1 ? '' : 's'}. ` +
+          'They run in the background — make sure the worker is running.',
       )
       await load()
     } catch {
@@ -457,6 +517,17 @@ export function LeadsWorkspace({
           >
             <Sparkles className="h-3.5 w-3.5" />
             Enrich missing
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void auditMissing()}
+            loading={bulkAction === 'audit-missing'}
+            title="Queue audits for businesses that have never been audited"
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+            Audit unaudited
           </Button>
 
           <Button

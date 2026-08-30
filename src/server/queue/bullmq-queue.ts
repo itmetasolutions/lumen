@@ -60,6 +60,30 @@ export class BullMQQueue implements JobQueue {
     return String(job.id)
   }
 
+  async enqueueMany<N extends JobName>(
+    name: N,
+    payloads: JobPayloads[N][],
+    opts: EnqueueOptions = {},
+  ): Promise<number> {
+    if (payloads.length === 0) return 0
+    const q = await this.queueFor(QUEUE_FOR[name])
+    const jobs = await q.addBulk(
+      payloads.map((data) => ({
+        name,
+        data,
+        opts: {
+          delay: opts.delayMs,
+          attempts: opts.maxAttempts ?? 3,
+          priority: opts.priority,
+          backoff: { type: 'exponential', delay: 5_000 },
+          removeOnComplete: { age: 86_400, count: 5_000 },
+          removeOnFail: false,
+        },
+      })),
+    )
+    return jobs.length
+  }
+
   async work(
     queue: string,
     concurrency: number,
