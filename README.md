@@ -17,20 +17,48 @@ each of those claims.
 
 ---
 
-## Two ways to run it
+## Download
 
-### Desktop app (Windows)
+**[⬇ Download Lumen for Windows](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)**
 
-A self-contained `.exe` that bundles its own PostgreSQL, runs the server and the
-background worker for you, and updates itself from GitHub Releases. No database
-to install, no second terminal.
+[![Latest release](https://img.shields.io/github/v/release/itmetasolutions/lumen?label=latest&style=flat-square)](https://github.com/itmetasolutions/lumen/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/itmetasolutions/lumen/total?style=flat-square)](https://github.com/itmetasolutions/lumen/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue?style=flat-square)](https://github.com/itmetasolutions/lumen/releases/latest)
+
+That link always serves the newest installer — it never needs updating when you
+publish a new version. [All releases and changelogs](https://github.com/itmetasolutions/lumen/releases).
+
+Everything is included: the app bundles its own PostgreSQL and background worker,
+so there is no database to install and nothing to configure before first launch.
+It runs offline apart from the discovery providers themselves.
+
+**Requirements** — Windows 10 or 11, 64-bit. Roughly 700 MB on disk after
+install. Microsoft Edge or Google Chrome must be present for UX audits and
+screenshots; both are optional for everything else.
+
+**First launch takes a minute** while it initialises its local database. The
+splash screen reports each step, so you can see it working.
+
+**Updates install themselves.** The app checks on launch and from
+*Help → Check for Updates…*, downloads in the background, and offers to restart.
+Running jobs survive a restart — they live in the database queue, not in memory.
+
+> **Windows SmartScreen will warn you.** The installer is not code-signed yet, so
+> you will see *"Windows protected your PC"*. Click **More info → Run anyway**.
+> Signing is on the roadmap; see [`docs/DESKTOP.md`](docs/DESKTOP.md).
+
+---
+
+## Building and running it yourself
+
+### Desktop build
 
 ```bash
 npm run desktop:dist
 ```
 
-The installer lands in `release/`. Build, release and troubleshooting notes:
-[`docs/DESKTOP.md`](docs/DESKTOP.md).
+The installer lands in `release/` as `Lumen-Setup.exe`. Build, release and
+troubleshooting notes: [`docs/DESKTOP.md`](docs/DESKTOP.md).
 
 ### Development
 

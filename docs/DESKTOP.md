@@ -36,8 +36,22 @@ npm run desktop:dist
 | `desktop:build` | Next standalone build, bundles the worker, compiles the Electron main process |
 | `desktop:start` | Builds then runs Electron directly — the fast inner loop |
 | `desktop:pack` | Unpacked app in `release/win-unpacked` — quickest packaging smoke test |
-| `desktop:dist` | The installer: `release/Lumen-Setup-<version>.exe` |
+| `desktop:dist` | The installer: `release/Lumen-Setup.exe` |
 | `desktop:publish` | Builds and uploads to GitHub Releases (needs `GH_TOKEN`) |
+
+The installer is named `Lumen-Setup.exe` with **no version in the filename**.
+That is deliberate: GitHub serves `/releases/latest/download/<asset-name>`, so a
+fixed name gives a permanent download link that never has to be updated when you
+publish a new version:
+
+```
+https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe
+```
+
+The version stays visible on the release page, in `latest.yml`, and in the app's
+Help menu. Assets are scoped per release, so reusing the name across releases is
+fine — and `electron-updater` resolves by the filename recorded in
+`latest.yml`, which matches.
 
 Current installer size is roughly **284 MB** — Electron, a full PostgreSQL, the
 Next server and Chromium-driving dependencies.
