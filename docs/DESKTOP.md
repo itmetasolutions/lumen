@@ -78,10 +78,12 @@ set GH_TOKEN=your_personal_access_token && npm run desktop:publish
 ```
 
 The token needs `repo` scope ([create one here](https://github.com/settings/tokens)).
-electron-builder creates a **draft** release and uploads the installer,
-`latest.yml` and the `.blockmap`.
+electron-builder uploads the installer, `latest.yml` and the `.blockmap`.
 
-**Publish the draft on GitHub afterwards — the updater ignores drafts.**
+Because both publish configs set `releaseType: "release"`, the release is
+**published straight away** rather than left as a draft. electron-builder's own
+default is `draft`; this project overrides it. The assets are live to every
+installed copy the moment the upload finishes.
 
 If you would rather upload by hand, `npm run desktop:dist` produces the same
 three files in `release/`; attach all three to a GitHub release tagged
@@ -165,7 +167,7 @@ npm run agent:publish
 ```
 
 Run them in either order — they write different filenames, so neither
-overwrites the other's assets. Publish the draft release once, afterwards.
+overwrites the other's assets.
 
 ### Releasing from GitHub instead
 
@@ -182,8 +184,12 @@ git push origin v0.2.0
 Or **Actions → Release → Run workflow** and type the version.
 
 The job type-checks, runs the tests, refuses to continue if `package.json`
-disagrees with the tag, then builds and uploads both installers to a **draft**
-release. Open it, paste the notes from `CHANGELOG.md`, and press Publish.
+disagrees with the tag, then builds and uploads both installers.
+
+**The release goes live immediately** — see the note above about
+`releaseType`. Add the notes from `CHANGELOG.md` to the release body once it
+appears. For a review step before shipping, set `releaseType` to `"draft"` in
+both configs.
 
 Two things it needs that are easy to miss if you adapt it:
 
@@ -200,7 +206,7 @@ Two things it needs that are easy to miss if you adapt it:
 ## How updating works
 
 1. Bump `version` in `package.json`.
-2. `npm run desktop:publish`, then publish the draft release on GitHub.
+2. `npm run desktop:publish` — the release publishes itself.
 
 Installed copies check on launch (8 seconds after start, so it never competes
 with first paint) and from **Help → Check for Updates…**. A new version

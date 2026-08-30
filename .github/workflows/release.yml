@@ -1,16 +1,20 @@
 name: Release
 
 # Builds both Windows installers on GitHub's own Windows runner and attaches
-# them to a draft release. Nothing is built on your machine and no personal
-# access token is involved — Actions issues its own scoped token for the job.
+# them to the release. Nothing is built on your machine and no personal access
+# token is involved — Actions issues its own scoped token for the job.
 #
 # Two ways to start it:
 #   - push a tag: git tag v0.2.0 && git push origin v0.2.0
 #   - or Actions → Release → Run workflow, and type the version
 #
-# The release is left as a DRAFT so you can read the notes and check the assets
-# before anyone's app sees it. The updater ignores drafts, so nothing reaches
-# an installed copy until you press Publish.
+# Both publish configs set releaseType: "release", so the release goes LIVE as
+# soon as the assets finish uploading — electron-builder's own default is
+# "draft", but this project overrides it. Every installed copy will offer the
+# update on its next check, without anyone pressing anything.
+#
+# For a review step instead, set releaseType to "draft" in package.json
+# (build.publish) and in electron-builder.agent.json.
 
 on:
   push:
@@ -107,5 +111,6 @@ jobs:
           Get-ChildItem release, release-agent -Filter *.exe -ErrorAction SilentlyContinue |
             ForEach-Object { '  {0}  {1:N0} MB' -f $_.Name, ($_.Length / 1MB) }
           Write-Host ''
-          Write-Host 'The release is a DRAFT. Open it, paste the notes from CHANGELOG.md,'
-          Write-Host 'confirm all six assets are attached, then press Publish release.'
+          Write-Host 'The release is LIVE (releaseType: release). Installed copies will'
+          Write-Host 'offer this update on their next check. Confirm all six assets are'
+          Write-Host 'attached, and add the notes from CHANGELOG.md to the release body.'
