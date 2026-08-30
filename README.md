@@ -1,95 +1,146 @@
 # Lumen
 
-Universal business lead intelligence and website audit platform.
+Business lead intelligence and website audit platform.
 
 Discover businesses across multiple providers, resolve them into one record each,
 audit their websites with reproducible evidence, detect overlapping sales
 opportunities, and export exactly the leads you filtered.
 
+Search a market — *"Roofing companies in Dallas"* — and get answers to: who has
+no website, who needs a redesign, who has SEO problems, who is slow, who has
+several of those at once, who is worth calling first, and what evidence supports
+each of those claims.
+
 > Not a Google Maps scraper. Google Places is one adapter behind a provider
-> interface; OpenStreetMap works with no API key at all, so the product is
-> functional with real data out of the box.
+> interface, and OpenStreetMap works with no API key at all, so the product is
+> useful with real data out of the box.
 
 ---
 
-## Quick start
+## Two ways to run it
+
+### Desktop app (Windows)
+
+A self-contained `.exe` that bundles its own PostgreSQL, runs the server and the
+background worker for you, and updates itself from GitHub Releases. No database
+to install, no second terminal.
+
+```bash
+npm run desktop:dist
+```
+
+The installer lands in `release/`. Build, release and troubleshooting notes:
+[`docs/DESKTOP.md`](docs/DESKTOP.md).
+
+### Development
 
 ```bash
 npm install
 ```
 
-Create `.env` from the template:
-
-```bash
-cp .env.example .env
-```
-
-At minimum set `DATABASE_URL` and `AUTH_SECRET`:
+Copy `.env.example` to `.env` and set at minimum:
 
 ```
-DATABASE_URL="postgresql://postgres:PASSWORD@localhost:5432/lumen?schema=public"
+DATABASE_URL="postgresql://user:password@host:5432/lumen?schema=public"
 AUTH_SECRET="a-long-random-string"
 ```
 
 Create the schema and the first account:
 
 ```bash
-npm run db:push
-npm run db:seed
+npm run db:push && npm run db:seed
 ```
 
-Run the app **and the worker** — they are separate processes on purpose, because
-discovery and audits must never occupy a request thread:
+Run the app **and the worker** — separate processes on purpose, so discovery and
+audits never occupy a request thread:
 
 ```bash
-npm run dev      # terminal 1 — http://localhost:3000
-npm run worker   # terminal 2 — processes discovery, audit and export jobs
+npm run dev
+```
+
+```bash
+npm run worker
 ```
 
 Sign in with the credentials the seed script printed, then go to
-**Discovery → New Discovery**.
-
-### Verify the setup
-
-```bash
-npm run typecheck   # strict TypeScript across the whole codebase
-npm test            # 150 unit tests: dedupe, normalisation, SEO rules, scoring, filters, SSRF
-```
+**Discovery → New Discovery**. Without the worker running, jobs stay queued — the
+progress page says so rather than spinning.
 
 ---
 
-## Desktop app (Windows .exe)
+## What works without any API keys
 
-Lumen also packages as a self-contained Windows application with its own bundled
-PostgreSQL and auto-update from GitHub Releases — no separate database, worker
-terminal or Node install required.
-
-```bash
-npm run desktop:dist
-```
-
-The installer lands in `release/`. Full build, release and troubleshooting notes:
-[`docs/DESKTOP.md`](docs/DESKTOP.md).
-
----
-
-## What runs without any API keys
-
-| Capability | Works unkeyed? | Notes |
+| Capability | Unkeyed? | Notes |
 |---|---|---|
-| Business discovery | **Yes** | OpenStreetMap / Overpass, plus Nominatim geocoding. Attribution shown in the UI. |
+| Business discovery | **Yes** | OpenStreetMap / Overpass with Nominatim geocoding. ODbL attribution shown in the UI. |
 | Website crawl + technical audit | **Yes** | Built-in fetcher with SSRF protection and robots compliance. |
-| SEO audit | **Yes** | ~30 deterministic rules over the crawled DOM. |
-| UX audit + screenshots | **Yes**, if a browser is installed | Drives an installed Edge/Chrome via `playwright-core`. Set `PLAYWRIGHT_CHANNEL`. |
-| Performance | **Yes**, at low volume | PageSpeed Insights allows unkeyed calls at a strict quota. Add a PageSpeed key in Settings -> Connections for real volume. |
-| Google Places discovery | No | Add a Google Places key in Settings -> Connections. |
-| SerpApi discovery | No | Add one SerpApi key in Settings -> Connections to enable Google Maps, Yelp and Yandex engines. The default local cap is 250 searches/month. |
-| AI-assisted UX commentary | No | Optional. Add an OpenAI key in Settings -> Connections. Never affects any score. |
+| SEO audit | **Yes** | Deterministic rules over the crawled DOM. |
+| UX audit + screenshots | **Yes**, with a browser | Drives installed Edge/Chrome via `playwright-core`. Set `PLAYWRIGHT_CHANNEL`. |
+| Contact enrichment | **Yes** | Crawls the business's own site for missing phone, email and socials. |
+| Performance | **Yes**, low volume | PageSpeed Insights permits unkeyed calls at a strict daily quota. |
+| Google Places discovery | No | Needs a Google Places key. |
+| SerpApi discovery | No | One key enables the Google Maps, Yelp and Yandex engines. |
+| AI-assisted UX commentary | No | Optional. Never affects any score. |
 
-**Settings -> Connections** stores workspace API credentials. **Settings -> Integrations**
-probes every adapter live and tells you exactly what is missing. A provider with
-no credentials is excluded from the source picker - it is never silently swapped
-for another, and never faked.
+Credentials are stored per workspace in **Settings → Connections**.
+**Settings → Integrations** probes every adapter live and reports Connected /
+Not connected / Error with an actionable reason — a present-but-invalid key is
+worse than a missing one, because it fails silently inside a job.
+
+A provider without credentials is excluded from the source picker with its reason
+shown. It is never silently swapped for another, and never faked.
+
+---
+
+## Discovery sources
+
+| Provider | Key | Gives you |
+|---|---|---|
+| **OpenStreetMap** | none | Addresses, websites, phones, emails. No ratings. |
+| **Google Places** | `GOOGLE_MAPS_API_KEY` | Ratings, review counts, phones, websites, opening status. |
+| **SerpApi — Google Maps** | SerpApi key | Local listings with ratings and reviews. |
+| **SerpApi — Yelp** | same key | Yelp listings, categories, ratings, price range. |
+| **SerpApi — Yandex** | same key | Finds business websites local APIs miss. |
+
+All three SerpApi engines share one monthly quota, capped locally at **250
+searches** by default and cross-checked against SerpApi's own account balance.
+When it runs out, those engines report exhausted with the renewal date and drop
+out of the picker — they never fail silently mid-run. Raise the cap or swap the
+key in **Settings → Connections**.
+
+Large areas are split into overlapping geographic cells and each is searched
+separately, because every place-search API caps results per query. Industry terms
+expand into curated variations ("plumber" → plumbing company, emergency plumber,
+drain service); your own wording is always searched first and expansions are
+recorded separately in the coverage report.
+
+---
+
+## The lead workspace
+
+Seven tabs over one master database, all server-side filtered and paginated:
+
+**All Businesses · Website Creation · Website Redesign · SEO · Speed
+Optimization · Hot Leads · New Leads**
+
+Tabs **overlap by design**. `needsWebsite`, `needsRedesign`, `needsSeo` and
+`needsSpeed` are independent flags, so one business appears in every tab it
+qualifies for.
+
+- **Composable filters** — AND/OR trees over 55 fields: location, category,
+  rating, contact availability, every score, specific findings ("Missing H1",
+  "No sitemap", "Broken mobile layout"), opportunity flags, dates, source and
+  outreach stage.
+- **Saved views** remember tab, filters, sort, columns and date range together.
+- **Search** across name, domain, phone, email and address.
+- **Bulk actions** — enrich missing contacts, delete leads with no contact route.
+- **Export** to CSV or XLSX: everything, exactly the current filter, or just the
+  rows you ticked, choosing from 51 available fields.
+
+Clicking a business opens the full profile: contact and provenance, website
+status, every audit finding with its evidence, mobile and desktop performance,
+screenshots at two viewports, the reason each opportunity triggered, audit
+history over time, and a lightweight outreach status with notes and tags.
 
 ---
 
@@ -104,10 +155,10 @@ Next.js 15 (App Router, RSC)  →  services (src/server/*)  →  JobQueue driver
 ```
 
 **Queue driver.** `QUEUE_DRIVER=pg` (default) uses Postgres with
-`SELECT … FOR UPDATE SKIP LOCKED` — real at-least-once delivery, retries with
+`SELECT … FOR UPDATE SKIP LOCKED` — genuine at-least-once delivery, retries with
 exponential backoff, visibility timeouts and dead-lettering, with no second
-datastore. `QUEUE_DRIVER=bullmq` + `REDIS_URL` swaps in BullMQ. Application code
-only sees the `JobQueue` interface.
+datastore to install. `QUEUE_DRIVER=bullmq` + `REDIS_URL` swaps in BullMQ.
+Application code only ever sees the `JobQueue` interface.
 
 ### Pipeline
 
@@ -127,40 +178,40 @@ CLASSIFY  Opportunity rows + denormalised flags for server-side filtering
 ## Design decisions worth knowing
 
 **Health and opportunity are separate numbers.** SEO Health 28 means the site is
-bad. SEO Opportunity 86 means there is a lot to sell. They are computed
-separately, stored in separate columns and displayed separately.
-
-**Opportunities overlap.** `needsWebsite`, `needsRedesign`, `needsSeo` and
-`needsSpeed` are independent booleans. One business appears in every tab it
-qualifies for.
+bad. SEO Opportunity 86 means there is a lot to sell. Computed separately, stored
+separately, displayed separately.
 
 **Nothing is fabricated.** Missing data is `NULL` and renders as `Not Found`.
-Demo providers are not offered for new discovery runs. Older demo records, if
-present, remain stamped `isDemo`, badged `DEMO DATA` in the UI, suppressed in
-lead ranking, and carry a `DEMO DATA` column into every export.
+Demo providers are not offered for discovery. Any legacy demo records stay
+stamped `isDemo`, badged `DEMO DATA`, suppressed in lead ranking, and carry a
+`DEMO DATA` column into every export.
 
-**Every finding carries evidence.** An `AuditIssue` stores the selector queried,
+**Every finding carries evidence.** An `AuditIssue` records the selector queried,
 the value measured, the viewport used and the URL affected. AI commentary is
-stored with `source = AI_ASSISTED`, capped at MEDIUM confidence, and is excluded
-from opportunity scoring entirely.
+stored as `source = AI_ASSISTED`, capped at MEDIUM confidence, and excluded from
+opportunity scoring entirely — it never drives a verdict.
+
+**Lead priority is not "worst website first."** It weights contactability and
+credibility alongside need, so a dreadful site belonging to an unreachable
+business does not outrank a reachable, credible one. Every score keeps its
+`reasons[]`, so the UI can always answer "why 91?".
 
 **Targeted re-audits merge, they do not replace.** Re-running only the UX checks
 updates the UX projection and leaves SEO, speed and technical exactly as the last
 audit that measured them left it. Each run declares which domains it is
-*authoritative* over; everything else is carried forward, including the stored
-opportunity reasons. Without this, a UX-only re-audit silently drops a business
-out of the SEO tab. Covered by `tests/audit-merge.test.ts` and
-`scripts/verify-merge-direct.ts`.
+*authoritative* over; everything else carries forward, opportunity reasons
+included. Without this a UX-only re-audit silently drops a business out of the
+SEO tab.
 
 **History is append-only.** A re-audit writes a new `Audit` row. The denormalised
 score columns on `Business` are a rebuilt projection of the latest audit, never
-hand-authored, existing only so 100k+ rows can be filtered and sorted in Postgres.
+hand-authored, existing only so 100k+ rows filter and sort in Postgres.
 
 **One filter compiler.** The table, the tab counts and the export all call
 `compileQuery`. That is what makes "Export Current Filter" provably return the
-rows on screen — there is no second code path to drift.
+rows on screen — there is no second code path to drift out of sync.
 
-**Scoring weights are data.** Every number that influences a score lives in
+**Scoring weights are data.** Every number influencing a score lives in
 `ScoringProfile.weights` and is editable in Settings → Scoring.
 
 ---
@@ -169,23 +220,52 @@ rows on screen — there is no second code path to drift.
 
 - Session cookies (httpOnly, SameSite=Lax, signed JWT), bcrypt password hashing
 - Workspace isolation re-checked against the membership table on every request
-- zod validation on every route; the filter DSL is an allowlist, not free-form SQL
+- zod on every route; the filter DSL is a field allowlist, not free-form SQL
 - Per-IP rate limiting by route class
 - Exports written server-side and served through an authorised handler
-- **SSRF protection on the crawler**: scheme and port allowlists, DNS resolved
-  before connect, private/loopback/link-local/CGNAT/metadata ranges rejected on
+- API keys stay server-side and are never returned to the browser
+- **SSRF protection on the crawler** — it consumes URLs from third-party APIs and
+  user uploads: scheme and port allowlists, DNS resolved before connect,
+  private / loopback / link-local / CGNAT / cloud-metadata ranges rejected on
   **every redirect hop**, redirect cap, response size cap, content-type allowlist
 - CSV cells beginning `= + - @` are prefixed to defuse spreadsheet formula injection
 
 ---
 
-## Compliance (§30)
+## Compliance
 
 - Official provider APIs and permitted public sources only
 - The crawler identifies itself, honours robots.txt and rate-limits per host
 - No CAPTCHA solving or bot-protection evasion of any kind
-- Contact details are collected only where the business publishes them publicly
+- Contact details collected only where the business publishes them publicly
 - The application never sends outreach; contact status is recorded by hand
+
+---
+
+## Testing
+
+```bash
+npm test
+```
+
+```bash
+npm run typecheck
+```
+
+**165 tests across 9 suites**, covering the logic where a silent regression would
+be expensive:
+
+| Suite | Covers |
+|---|---|
+| `normalize` | Phone, URL, name, address and geo normalisation |
+| `resolution` | Entity resolution — merging duplicates without merging branches |
+| `scoring` | Health vs opportunity, overlap, lead priority, configurable weights |
+| `filters` | Filter DSL, field allowlist, and export/table parity |
+| `seo-rules` | Deterministic SEO rules and their evidence |
+| `discovery` | Term expansion, geographic tiling, provider normalisation |
+| `contact-enrichment` | Contact extraction, including the rules against guessing |
+| `audit-merge` | Targeted re-audits preserving domains they did not measure |
+| `ssrf` | Every private and reserved range the crawler must refuse |
 
 ---
 
@@ -193,8 +273,8 @@ rows on screen — there is no second code path to drift.
 
 ```
 prisma/schema.prisma     data model
-scripts/worker.ts        worker entrypoint
-scripts/seed.ts          first user + workspace
+electron/                desktop main process: DB lifecycle, servers, updater
+scripts/                 worker, seed, desktop build, verification scripts
 src/app/                 routes (App Router) and API handlers
 src/server/
   discovery/providers/   Google Places, OpenStreetMap, SerpApi adapters
@@ -204,10 +284,14 @@ src/server/
   scoring/               configurable weights, health, opportunity, lead score
   filters/               filter DSL and its Prisma compiler
   export/                column registry, CSV and XLSX writers
+  leads/                 queries, tab counts, contact enrichment
 src/components/          UI, data table, filter builder, charts
 tests/                   unit tests for the logic above
 docs/ARCHITECTURE.md     full architecture write-up
+docs/DESKTOP.md          desktop build and release guide
 ```
+
+---
 
 ## Adding a discovery provider
 
@@ -215,5 +299,20 @@ docs/ARCHITECTURE.md     full architecture write-up
 2. Add it to the array in `providers/index.ts`.
 
 Nothing else changes. `configured()` drives its status in Settings and whether it
-appears in the wizard; `normalize.ts` remains the only place a provider payload is
-translated into the internal entity.
+appears in the wizard, and `normalize.ts` stays the only place a provider payload
+becomes an internal entity.
+
+---
+
+## Commands
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run worker` | Background worker — discovery, audits, exports |
+| `npm run build` / `start` | Production web build |
+| `npm run db:push` / `db:seed` / `db:studio` | Schema, first account, data browser |
+| `npm test` / `typecheck` | Test suite, strict type check |
+| `npm run desktop:start` | Run the desktop app locally |
+| `npm run desktop:dist` | Build the Windows installer |
+| `npm run desktop:publish` | Build and upload to GitHub Releases |
