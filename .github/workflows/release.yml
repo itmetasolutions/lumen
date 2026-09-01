@@ -92,6 +92,53 @@ jobs:
             exit 1
           }
 
+      # Create the release BEFORE either build.
+      #
+      # Both publish steps run electron-builder with --publish always, and each
+      # will create the release itself if it cannot find one for this tag. They
+      # run sequentially, but GitHub's API is eventually consistent: on v0.2.1
+      # the second run queried the releases list, did not yet see the one the
+      # first had just made, and created a duplicate. The result was two
+      # releases sharing one tag with the assets split between them — and
+      # /releases/latest/download/ serving 404 for half of them.
+      #
+      # Creating it once here means both runs find an existing release and only
+      # upload into it. Idempotent, so re-running the workflow is safe.
+      - name: Create the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            'v${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists — the builds will upload into it."
+            exit 0
+          }
+
+          # Use this version's own section of the changelog as the body, so the
+          # notes are there without anyone pasting them in afterwards.
+          $notes = "See CHANGELOG.md for the full notes."
+          if (Test-Path CHANGELOG.md) {
+            $lines = Get-Content CHANGELOG.md
+            $start = ($lines | Select-String -Pattern "^## $tag " | Select-Object -First 1).LineNumber
+            if ($start) {
+              $rest = $lines[$start..($lines.Count - 1)]
+              $end = ($rest | Select-String -Pattern '^## v' | Select-Object -First 1).LineNumber
+              $body = if ($end) { $rest[0..($end - 2)] } else { $rest }
+              $notes = ($body -join "`n").Trim()
+            }
+          }
+
+          $notes | Out-File -FilePath release-notes.txt -Encoding utf8
+          gh release create $tag --title $tag --notes-file release-notes.txt
+          Write-Host "Created release $tag."
+
       # ── The main app ────────────────────────────────────────────────────
       # desktop:publish runs the Next build, bundles the worker, compiles the
       # Electron layer, packages, and uploads. It writes latest.yml.
@@ -104,13 +151,54 @@ jobs:
       - name: Build and upload Lumen Agent
         run: npm run agent:publish
 
-      - name: What landed
+      # Check the RELEASE, not the build output.
+      #
+      # Listing the files that exist on the runner proves only that packaging
+      # worked. v0.2.1 packaged both installers perfectly and still shipped
+      # broken, because the assets landed on two different releases sharing one
+      # tag and half the download links returned 404. The only thing worth
+      # asserting is what a user can actually download.
+      - name: Verify the release
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          Write-Host 'Assets built:'
-          Get-ChildItem release, release-agent -Filter *.exe -ErrorAction SilentlyContinue |
-            ForEach-Object { '  {0}  {1:N0} MB' -f $_.Name, ($_.Length / 1MB) }
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            'v${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+
+          # More than one release on a tag is the failure mode itself.
+          $all = gh release list --limit 50 --json tagName |
+            ConvertFrom-Json |
+            Where-Object { $_.tagName -eq $tag }
+          if ($all.Count -gt 1) {
+            Write-Error "$($all.Count) releases share the tag $tag. Delete the extras — half the download links will 404."
+            exit 1
+          }
+
+          $expected = @(
+            'Lumen-Setup.exe',
+            'Lumen-Setup.exe.blockmap',
+            'latest.yml',
+            'Lumen-Agent-Setup.exe',
+            'Lumen-Agent-Setup.exe.blockmap',
+            'agent.yml'
+          )
+
+          $actual = (gh release view $tag --json assets | ConvertFrom-Json).assets.name
+          Write-Host "Assets on $tag :"
+          foreach ($name in $expected) {
+            $ok = $actual -contains $name
+            Write-Host ("  {0} {1}" -f $(if ($ok) { 'OK  ' } else { 'MISS' }), $name)
+          }
+
+          $missing = $expected | Where-Object { $actual -notcontains $_ }
+          if ($missing) {
+            Write-Error "Missing from the release: $($missing -join ', ')"
+            exit 1
+          }
+
           Write-Host ''
-          Write-Host 'The release is LIVE (releaseType: release). Installed copies will'
-          Write-Host 'offer this update on their next check. Confirm all six assets are'
-          Write-Host 'attached, and add the notes from CHANGELOG.md to the release body.'
+          Write-Host "All six assets are on $tag. Installed copies will offer this update on their next check."
