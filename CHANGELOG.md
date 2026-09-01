@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.2.1 — Lumen Agent starts again
+
+**If you installed Lumen Agent from v0.2.0, update it.** That build could not
+launch: it opened a dialog reading *"Cannot find module './server-url'"* and
+quit. The main Lumen app was never affected.
+
+### What went wrong
+
+The agent installer lists the files it ships one by one, rather than taking
+everything. That is deliberate — it is a client, and an allow-list is what keeps
+it at 97 MB instead of carrying the server, the database and PostgreSQL.
+
+The cost is that adding a module and forgetting to list it produces a build that
+packages, signs and installs perfectly, then dies the moment it starts. Nothing
+in the pipeline objects, because from the packager's point of view nothing is
+wrong: it packed exactly what it was told to.
+
+`server-url.js` — which reads and validates the server address you type on
+first run — was never on the list.
+
+### The fix
+
+The file is now included, and `scripts/verify-agent-package.mjs` walks the
+agent's real require graph at build time and fails the build if anything it
+reaches is missing. It reproduces the v0.2.0 failure when the entry is removed,
+so this class of bug cannot ship silently again.
+
+### Install
+
+**[Lumen-Agent-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Agent-Setup.exe)** — install over the broken v0.2.0; nothing needs uninstalling first.
+
+A v0.2.0 agent cannot update itself, because it never starts long enough to
+check. Download it once by hand and it will keep itself current from here.
+
+**[Lumen-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)** — unchanged from v0.2.0 apart from the version. Existing installs will offer it; there is nothing new in it for you.
+
+---
+
 ## v0.2.0 — the calling half
 
 v0.1.0 found leads and told you which were worth calling. This release covers

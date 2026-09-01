@@ -17,6 +17,7 @@
     "package.json",
     "dist-electron/agent-main.js",
     "dist-electron/agent-config.js",
+    "dist-electron/server-url.js",
     "dist-electron/agent-setup-preload.js",
     "dist-electron/agent-setup.html",
     "dist-electron/updater.js",
