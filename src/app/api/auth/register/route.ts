@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
 import { hashPassword, passwordProblems } from '@/server/auth/password'
-import { setSessionCookie } from '@/server/auth/session'
+import { isSecureRequest, setSessionCookie } from '@/server/auth/session'
 import { DEFAULT_WEIGHTS } from '@/server/scoring/weights'
 import { route, HttpError } from '@/app/api/_lib/handler'
 
@@ -14,7 +14,7 @@ const schema = z.object({
 
 export const POST = route(
   { schema, limit: 'auth', authenticated: false },
-  async ({ body }) => {
+  async ({ body, req }) => {
     const email = body.email.trim().toLowerCase()
 
     const problems = passwordProblems(body.password)
@@ -52,11 +52,14 @@ export const POST = route(
       return { user, workspace }
     })
 
-    await setSessionCookie({
-      userId: user.id,
-      workspaceId: workspace.id,
-      email: user.email,
-    })
+    await setSessionCookie(
+      {
+        userId: user.id,
+        workspaceId: workspace.id,
+        email: user.email,
+      },
+      { secure: isSecureRequest(req) },
+    )
 
     return { ok: true, workspaceId: workspace.id }
   },

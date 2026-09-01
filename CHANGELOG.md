@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.2.2 — agents can actually sign in
+
+**If you have Lumen Agent, update both apps.** Until this release an agent could
+not sign in at all: the password was accepted, the page reloaded, and the form
+came back empty. Nothing was wrong with the account or the password.
+
+### What went wrong
+
+The session cookie was marked `Secure` whenever the app ran a production build
+— which the desktop app always does. A browser silently discards a `Secure`
+cookie on any address that is not a secure context, and agents reach their
+Lumen over plain HTTP on the local network, like `http://192.168.1.14:3210`.
+
+So the sign-in succeeded, the cookie was thrown away without a word, and the
+very next request looked like a stranger's. Straight back to the login page.
+
+It survived every test because the main app talks to `127.0.0.1`, and localhost
+*is* a secure context — it accepts the cookie happily. Only connections from
+another machine broke, which is the one thing the agent app exists to do.
+
+### The fix
+
+The cookie now follows the actual connection rather than the build type. Over
+HTTPS it is still marked `Secure`; over a plain local network it is not, because
+there is no TLS to protect. A reverse proxy terminating TLS is honoured through
+`x-forwarded-proto`, so a proper HTTPS deployment keeps the stronger cookie.
+
+Verified end to end against a real production build over a LAN address, not just
+in unit tests: sign in, session persists across requests, and a request without
+the cookie still bounces to the login page as it should.
+
+### Also
+
+Releases are built and published in one piece again. v0.2.1 went out as two
+GitHub releases sharing a tag, with the installers split between them, so half
+the download links returned 404. The workflow now creates the release once
+before either build and refuses to finish if the tag carries more than one
+release or is missing any of its six assets.
+
+### Install
+
+**[Lumen-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Setup.exe)** — update first; the fix is server-side, so this is the one that matters.
+
+**[Lumen-Agent-Setup.exe](https://github.com/itmetasolutions/lumen/releases/latest/download/Lumen-Agent-Setup.exe)** — then your agents. A v0.2.0 agent still cannot update itself and must be replaced by hand once.
+
+---
+
 ## v0.2.1 — Lumen Agent starts again
 
 **If you installed Lumen Agent from v0.2.0, update it.** That build could not

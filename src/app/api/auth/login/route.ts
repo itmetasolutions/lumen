@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
 import { verifyPassword } from '@/server/auth/password'
-import { setSessionCookie } from '@/server/auth/session'
+import { isSecureRequest, setSessionCookie } from '@/server/auth/session'
 import { route, HttpError } from '@/app/api/_lib/handler'
 
 const schema = z.object({
@@ -11,7 +11,7 @@ const schema = z.object({
 
 export const POST = route(
   { schema, limit: 'auth', authenticated: false },
-  async ({ body }) => {
+  async ({ body, req }) => {
     const email = body.email.trim().toLowerCase()
 
     const user = await prisma.user.findUnique({
@@ -39,11 +39,14 @@ export const POST = route(
       data: { lastLoginAt: new Date() },
     })
 
-    await setSessionCookie({
-      userId: user.id,
-      workspaceId: membership.workspaceId,
-      email: user.email,
-    })
+    await setSessionCookie(
+      {
+        userId: user.id,
+        workspaceId: membership.workspaceId,
+        email: user.email,
+      },
+      { secure: isSecureRequest(req) },
+    )
 
     // The agent app and the admin app are different surfaces; the caller needs
     // to know where to send this person after signing in.
